@@ -114,11 +114,11 @@ function ProductForm({
         return;
       }
       // Validasi size
-      if (file.size > 1024 * 1024) {
+      if (file.size > 2 * 1024 * 1024) {
         toast({
           variant: 'destructive',
           title: 'Ukuran gambar terlalu besar',
-          description: 'Ukuran maksimal 1MB.'
+          description: 'Ukuran maksimal 2MB.'
         });
         return;
       }
