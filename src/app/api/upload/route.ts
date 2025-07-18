@@ -7,7 +7,11 @@ import sharp from 'sharp'
 
 const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/jpg'];
 const MAX_SIZE = 2 * 1024 * 1024; // 2MB
-const allowedOrigins = ['https://app.namadomain.com', 'http://localhost:3000'];
+const allowedOrigins = [
+  'https://app.namadomain.com',
+  'http://localhost:3000',
+  'https://app.maujajan.id'
+];
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -34,12 +38,6 @@ export async function POST(request: NextRequest) {
   if (!allowedOrigins.includes(origin)) {
     console.warn('CORS Forbidden upload attempt from', origin);
     return NextResponse.json({ success: false, error: 'CORS Forbidden' }, { status: 403 });
-  }
-  // Cek role user (hanya owner yang boleh upload)
-  const userRole = request.headers.get('x-user-role');
-  if (userRole !== 'owner') {
-    console.warn('Forbidden upload attempt by non-owner');
-    return NextResponse.json({ success: false, error: 'Forbidden: Only owner can upload' }, { status: 403 });
   }
 
   const data = await request.formData()
