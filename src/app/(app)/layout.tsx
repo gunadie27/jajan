@@ -186,7 +186,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       </aside>
 
       <div className="md:ml-72">
-        <header className="sticky top-0 z-20 flex h-18 items-center justify-between gap-4 bg-gradient-to-r from-primary via-blue-500 to-purple-500 shadow-lg px-6 md:hidden">
+        <header className="sticky top-0 z-20 flex items-center justify-between gap-4 bg-gradient-to-r from-primary via-blue-500 to-purple-500 shadow-lg px-6 py-4 md:hidden">
             <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
                 <SheetTrigger asChild>
                     <Button size="icon" variant="ghost" className="sm:hidden text-white hover:bg-primary/80">
@@ -210,7 +210,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                     </Sidebar>
                 </SheetContent>
             </Sheet>
-            <div className="flex-1 flex justify-center items-center gap-2">
+            <div className="flex-1 flex justify-start items-center gap-1 pl-2">
               <AppLogo size="md" className="drop-shadow-lg" />
               <span className="font-headline text-xl font-bold text-white drop-shadow-sm tracking-tight">Maujajan POS</span>
             </div>

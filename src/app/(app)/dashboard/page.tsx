@@ -246,6 +246,7 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
         {/* Laba Bersih */}
+        {user?.role === 'owner' && (
         <Card className="shadow-lg rounded-xl border-0 p-3 sm:p-4 flex flex-col justify-between bg-gradient-to-br from-green-300/40 via-white to-white dark:from-green-600/40 dark:via-background dark:to-background">
           <CardHeader className="flex flex-col items-center justify-center gap-2 pb-1">
             <div className="bg-green-400/20 rounded-full p-2 mb-1"><DollarSign className="h-5 w-5 text-green-600 dark:text-green-300" /></div>
@@ -255,7 +256,9 @@ export default function DashboardPage() {
             <div className="text-lg sm:text-2xl font-bold text-green-900 dark:text-green-200">Rp{summaryStats.netProfit.toLocaleString('id-ID')}</div>
           </CardContent>
         </Card>
+        )}
         {/* Rata-rata Transaksi */}
+        {user?.role === 'owner' && (
         <Card className="shadow-lg rounded-xl border-0 p-3 sm:p-4 flex flex-col justify-between bg-gradient-to-br from-purple-300/40 via-white to-white dark:from-purple-600/40 dark:via-background dark:to-background">
           <CardHeader className="flex flex-col items-center justify-center gap-2 pb-1">
             <div className="bg-purple-400/20 rounded-full p-2 mb-1"><Users className="h-5 w-5 text-purple-600 dark:text-purple-300" /></div>
@@ -265,6 +268,7 @@ export default function DashboardPage() {
             <div className="text-lg sm:text-2xl font-bold text-purple-900 dark:text-purple-200">Rp{summaryStats.averageTransaction.toLocaleString('id-ID')}</div>
           </CardContent>
         </Card>
+        )}
       </div>
       {/* Untuk kasir: tampilkan tabel pengeluaran hari ini */}
       {user?.role === 'cashier' && (

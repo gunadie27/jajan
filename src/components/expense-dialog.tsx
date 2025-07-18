@@ -224,7 +224,8 @@ export function ExpenseDialog({
               />
             )}
           </div>
-          {/* Outlet field: selalu tampil untuk semua role */}
+          {/* Outlet field: hanya tampil untuk owner */}
+          {user?.role === 'owner' && (
           <div className="grid grid-cols-4 items-center gap-2 sm:gap-4">
             <Label htmlFor="outlet" className="text-right text-xs sm:text-sm">Outlet</Label>
             <Select
@@ -241,6 +242,7 @@ export function ExpenseDialog({
               </SelectContent>
             </Select>
           </div>
+          )}
           <DialogFooter className="gap-2 pt-2">
             <Button type="button" variant="secondary" onClick={() => onOpenChange(false)} className="rounded-lg px-4 text-xs sm:text-sm">Batal</Button>
             <Button type="submit" variant="popup">Simpan</Button>
