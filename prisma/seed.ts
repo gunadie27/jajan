@@ -7,10 +7,44 @@ const prisma = new PrismaClient();
 async function main() {
   console.log(`Start seeding ...`);
 
-  // Hapus pengguna yang sudah ada untuk menghindari duplikasi email
-  await prisma.user.deleteMany({ where: { email: 'owner@maujajan.com' } });
-  await prisma.outlet.deleteMany({ where: { name: 'Main Outlet' } });
+  // 1. Cari outlet yang akan dihapus
+  const outlet = await prisma.outlet.findUnique({ where: { name: 'Main Outlet' } });
 
+  // 2. Jika outlet ada, hapus semua data child yang berelasi ke outlet tsb, lalu hapus outlet-nya
+  if (outlet) {
+    // Cari semua transaction id yang terkait outlet
+    const transactions = await prisma.transaction.findMany({
+      where: { outletId: outlet.id },
+      select: { id: true },
+    });
+    const transactionIds = transactions.map(t => t.id);
+
+    // Hapus order item yang terkait transaction
+    if (transactionIds.length > 0) {
+      await prisma.orderItem.deleteMany({
+        where: { transactionId: { in: transactionIds } }
+      });
+    }
+
+    // Hapus transaction
+    await prisma.transaction.deleteMany({ where: { outletId: outlet.id } });
+
+    // Hapus expense, cashierSession, user
+    await prisma.expense.deleteMany({ where: { outletId: outlet.id } });
+    await prisma.cashierSession.deleteMany({ where: { outletId: outlet.id } });
+    await prisma.user.deleteMany({ where: { outletId: outlet.id } });
+
+    // Hapus customer yang terkait outlet (tambahan karena ada foreign key)
+    await prisma.customer.deleteMany({ where: { outletId: outlet.id } });
+
+    // Hapus product yang terkait outlet (tambahan karena ada foreign key)
+    await prisma.product.deleteMany({ where: { outletId: outlet.id } });
+
+    // Hapus outlet
+    await prisma.outlet.delete({ where: { id: outlet.id } });
+  }
+
+  // 3. Buat outlet baru
   const salt = await bcrypt.genSalt(10);
   const hashedPassword = await bcrypt.hash('password', salt);
 
@@ -22,6 +56,7 @@ async function main() {
   });
   console.log(`Created main outlet with id: ${mainOutlet.id}`);
 
+  // 4. Buat user baru
   const user = await prisma.user.create({
     data: {
       name: 'Admin Utama',
@@ -33,6 +68,27 @@ async function main() {
     },
   });
   console.log(`Created user with id: ${user.id}`);
+
+  // 5. Buat beberapa produk contoh
+  const product1 = await prisma.product.create({
+    data: {
+      name: 'Nasi Goreng',
+      category: 'Makanan',
+      imageUrl: '/images/nasi-goreng.jpg',
+      outletId: mainOutlet.id,
+    },
+  });
+  console.log(`Created product with id: ${product1.id}`);
+
+  const product2 = await prisma.product.create({
+    data: {
+      name: 'Es Teh Manis',
+      category: 'Minuman',
+      imageUrl: '/images/es-teh.jpg',
+      outletId: mainOutlet.id,
+    },
+  });
+  console.log(`Created product with id: ${product2.id}`);
 
   console.log(`Seeding finished.`);
 }

@@ -3,8 +3,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 model Outlet {
@@ -17,6 +18,8 @@ model Outlet {
   expenses        Expense[]
   transactions    Transaction[]
   users           User[]           @relation("OutletUsers")
+  products        Product[]        @relation("OutletProducts")
+  customers       Customer[]       @relation("OutletCustomers")
 }
 
 model User {
@@ -39,10 +42,12 @@ model Product {
   category   String
   imageUrl   String
   dataAiHint String?
+  outletId   String
   createdAt  DateTime         @default(now())
   updatedAt  DateTime         @updatedAt
   orderItems OrderItem[]
   variants   ProductVariant[]
+  outlet     Outlet           @relation("OutletProducts", fields: [outletId], references: [id])
 }
 
 model ProductVariant {
@@ -116,9 +121,11 @@ model Customer {
   lastTransactionDate  DateTime
   totalSpent           Float
   transactionIds       String[]
+  outletId             String
   createdAt            DateTime      @default(now())
   updatedAt            DateTime      @updatedAt
   transactions         Transaction[]
+  outlet               Outlet        @relation("OutletCustomers", fields: [outletId], references: [id])
 }
 
 model CashierSession {
