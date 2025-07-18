@@ -30,6 +30,7 @@ export default function RootLayout({
           href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=PT+Sans:wght@400;700&display=swap"
           rel="stylesheet"
         />
+        <meta name="robots" content="noindex, nofollow" />
       </head>
       <body className="font-body antialiased">
         <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false}>
