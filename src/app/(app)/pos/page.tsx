@@ -137,33 +137,31 @@ function WhatsAppDialog({
     onClose: () => void,
     onConfirm: (name: string, phone: string) => void
 }) {
-    if (!transaction) return null;
     const [name, setName] = useState("");
     const [phone, setPhone] = useState("");
-
 
     const generateReceiptText = (customerName: string) => {
         let text = `*Struk Digital - Maujajan POS*\n\n`;
         text += `Yth. ${customerName || 'Pelanggan'}\n\n`;
-        text += `ID Transaksi: ${transaction.id}\n`;
-        text += `Tanggal: ${new Intl.DateTimeFormat('id-ID', { dateStyle: 'long', timeStyle: 'short' }).format(new Date(transaction.date))}\n`;
-        text += `Outlet: ${transaction.outlet}\n`;
+        text += `ID Transaksi: ${transaction?.id || '-'}\n`;
+        text += `Tanggal: ${transaction ? new Intl.DateTimeFormat('id-ID', { dateStyle: 'long', timeStyle: 'short' }).format(new Date(transaction.date)) : '-'}\n`;
+        text += `Outlet: ${transaction?.outlet || '-'}\n`;
         text += `--------------------------------\n`;
-        transaction.items.forEach(item => {
+        transaction?.items.forEach(item => {
             text += `${item.product.name} (${item.variant.name})\n`;
             text += `${item.quantity} x Rp${item.price.toLocaleString('id-ID')} = Rp${(item.quantity * item.price).toLocaleString('id-ID')}\n`;
         });
         text += `--------------------------------\n`;
-        text += `*Total: Rp${transaction.total.toLocaleString('id-ID')}*\n\n`;
+        text += `*Total: Rp${transaction?.total?.toLocaleString('id-ID') || 0}*\n\n`;
         text += `Terima kasih telah berkunjung!`;
         return encodeURIComponent(text);
     }
     
     const handleSend = () => {
+        if (!transaction) return;
         onConfirm(name, phone);
         const receiptText = generateReceiptText(name);
         const whatsappUrl = `https://wa.me/${phone.startsWith('0') ? '62' + phone.substring(1) : phone}?text=${receiptText}`;
-        
         window.open(whatsappUrl, '_blank');
         onClose();
     }
@@ -177,19 +175,23 @@ function WhatsAppDialog({
                         Masukkan nomor WhatsApp untuk mengirim struk. Nama bersifat opsional.
                     </DialogDescription>
                 </DialogHeader>
-                <div className="space-y-4 py-4">
-                    <div className="space-y-2">
-                        <Label htmlFor="customer-name">Nama Pelanggan (Opsional)</Label>
-                        <Input id="customer-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Masukkan nama pelanggan" />
-                    </div>
-                     <div className="space-y-2">
-                        <Label htmlFor="customer-phone">Nomor WhatsApp</Label>
-                        <Input id="customer-phone" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="e.g. 081234567890" required />
-                    </div>
-                </div>
+                {transaction ? (
+                  <div className="space-y-4 py-4">
+                      <div className="space-y-2">
+                          <Label htmlFor="customer-name">Nama Pelanggan (Opsional)</Label>
+                          <Input id="customer-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Masukkan nama pelanggan" />
+                      </div>
+                       <div className="space-y-2">
+                          <Label htmlFor="customer-phone">Nomor WhatsApp</Label>
+                          <Input id="customer-phone" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="e.g. 081234567890" required />
+                      </div>
+                  </div>
+                ) : (
+                  <div className="text-center text-muted-foreground py-8">Tidak ada transaksi.</div>
+                )}
                 <DialogFooter>
                     <Button variant="secondary" onClick={onClose}>Batal</Button>
-                    <Button onClick={handleSend} disabled={!phone}>
+                    <Button onClick={handleSend} disabled={!phone || !transaction}>
                         <Send className="mr-2 h-4 w-4" />
                         Kirim & Simpan
                     </Button>

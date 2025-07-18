@@ -59,6 +59,7 @@ function ProductForm({
   const [formData, setFormData] = useState<Omit<Product, 'id'> & { isNewCategory?: boolean }>(product ? { ...product, id: undefined } as any : initialProductFormState);
   const [imagePreview, setImagePreview] = useState<string | null>(product?.imageUrl || null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { toast } = useToast();
 
   useEffect(() => {
     if (product && !productCategories.includes(product.category)) {
@@ -103,22 +104,79 @@ function ProductForm({
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const formData = new FormData();
-      formData.append('file', file);
-
-      try {
-        const response = await fetch('/api/upload', {
-          method: 'POST',
-          body: formData,
+      // Validasi type
+      if (!file.type.startsWith('image/')) {
+        toast({
+          variant: 'destructive',
+          title: 'File tidak valid',
+          description: 'Hanya file gambar yang diperbolehkan.'
         });
-        const data = await response.json();
-        if (data.success) {
-          setImagePreview(data.path);
-          setFormData(prev => ({...prev, imageUrl: data.path}));
-        }
-      } catch (error) {
-        console.error('Error uploading image:', error);
+        return;
       }
+      // Validasi size
+      if (file.size > 1024 * 1024) {
+        toast({
+          variant: 'destructive',
+          title: 'Ukuran gambar terlalu besar',
+          description: 'Ukuran maksimal 1MB.'
+        });
+        return;
+      }
+      // Resize/compress di client jika perlu
+      const img = document.createElement('img');
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        if (!ev.target?.result) return;
+        img.src = ev.target.result as string;
+        img.onload = async () => {
+          const MAX_DIM = 600;
+          let { width, height } = img;
+          if (width > MAX_DIM || height > MAX_DIM) {
+            // Resize
+            const scale = Math.min(MAX_DIM / width, MAX_DIM / height);
+            width = Math.round(width * scale);
+            height = Math.round(height * scale);
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, width, height);
+            canvas.toBlob(async (blob) => {
+              if (!blob) return;
+              // Upload blob ke server
+              const formData = new FormData();
+              formData.append('file', blob, file.name);
+              try {
+                const response = await fetch('/api/upload', {
+                  method: 'POST',
+                  body: formData,
+                });
+                const data = await response.json();
+                if (data.success) {
+                  setImagePreview(data.path);
+                  setFormData(prev => ({...prev, imageUrl: data.path}));
+                } else {
+                  toast({
+                    variant: 'destructive',
+                    title: 'Gagal upload gambar',
+                    description: data.message || 'Terjadi kesalahan saat upload.'
+                  });
+                }
+              } catch (error) {
+                console.error('Error uploading image:', error);
+                toast({
+                  variant: 'destructive',
+                  title: 'Gagal upload gambar',
+                  description: 'Terjadi kesalahan saat upload.'
+                });
+              }
+            }, 'image/jpeg', 0.85);
+          }
+        };
+      };
+      reader.readAsDataURL(file);
     }
   };
 
@@ -149,7 +207,7 @@ function ProductForm({
           <div className="space-y-1.5">
             <Label htmlFor="product-image" className="text-xs sm:text-sm">Gambar Produk</Label>
             <div 
-              className="w-full h-36 sm:h-44 border-2 border-dashed rounded-md flex items-center justify-center bg-muted/50 cursor-pointer"
+              className="w-full h-36 sm:h-44 border-2 border-dashed rounded-md flex items-center justify-center bg-muted/50 cursor-pointer overflow-hidden"
               onClick={triggerFileUpload}
             >
               {imagePreview ? (

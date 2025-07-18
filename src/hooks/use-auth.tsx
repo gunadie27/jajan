@@ -18,7 +18,6 @@ export function useAuth() {
       const storedUserString = localStorage.getItem("user");
       if (storedUserString) {
         const storedUser = JSON.parse(storedUserString);
-        console.log(`[DEBUG] Stored user from localStorage:`, storedUser);
         setUser(storedUser);
         if(pathname === "/"){
             router.push("/dashboard");
