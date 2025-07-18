@@ -16,6 +16,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { ExpenseDialog } from '@/components/expense-dialog';
+import { useToast } from '@/hooks/use-toast';
 
 export default function DashboardPage() {
 
@@ -29,36 +30,45 @@ export default function DashboardPage() {
     to: new Date(),
   });
   const [isExpenseDialogOpen, setIsExpenseDialogOpen] = useState(false);
+  const { toast } = useToast();
+  const [error, setError] = useState<string | null>(null);
+
+  // Helper to check date range (max 90 days)
+  function isValidDateRange(range: DateRange | undefined) {
+    if (!range?.from || !range?.to) return true;
+    const diff = (range.to.getTime() - range.from.getTime()) / (1000 * 60 * 60 * 24);
+    return diff <= 90;
+  }
 
   useEffect(() => {
     if (isLoading || !user) return;
-
+    setError(null);
     const fetchData = async () => {
-      const fetchedOutlets = await getOutlets();
-      setAllOutlets(fetchedOutlets);
-
-      // Set initial selectedOutlet if not already set
-      if (!selectedOutlet && fetchedOutlets.length > 0 && user) {
-        setSelectedOutlet(user.role === 'cashier' && user.outletId ? user.outletId : fetchedOutlets[0].id);
+      try {
+        const fetchedOutlets = await getOutlets();
+        setAllOutlets(fetchedOutlets);
+        if (!selectedOutlet && fetchedOutlets.length > 0 && user) {
+          setSelectedOutlet(user.role === 'cashier' && user.outletId ? user.outletId : fetchedOutlets[0].id);
+        }
+        let transactions: Transaction[] = [];
+        let expenses: Expense[] = [];
+        let currentOutletId: string | undefined = undefined;
+        if (user) {
+          currentOutletId = user.role === 'cashier' && user.outletId ? user.outletId : selectedOutlet;
+        }
+        if (currentOutletId) {
+          transactions = await getTransactions(currentOutletId);
+          expenses = await getExpenses(currentOutletId);
+        } else {
+          transactions = await getTransactions();
+          expenses = await getExpenses();
+        }
+        setAllTransactions(transactions);
+        setAllExpenses(expenses);
+      } catch (err: any) {
+        setError('Gagal mengambil data. Silakan coba lagi.');
+        toast({ title: 'Error', description: 'Gagal mengambil data dashboard', variant: 'destructive' });
       }
-
-      let transactions: Transaction[] = [];
-      let expenses: Expense[] = [];
-
-      let currentOutletId: string | undefined = undefined;
-      if (user) {
-        currentOutletId = user.role === 'cashier' && user.outletId ? user.outletId : selectedOutlet;
-      }
-
-      if (currentOutletId) {
-        transactions = await getTransactions(currentOutletId);
-        expenses = await getExpenses(currentOutletId);
-      } else {
-        transactions = await getTransactions();
-        expenses = await getExpenses();
-      }
-      setAllTransactions(transactions);
-      setAllExpenses(expenses);
     };
     fetchData();
   }, [user, selectedOutlet, isLoading]);
@@ -122,6 +132,18 @@ export default function DashboardPage() {
     });
     return Array.from(productSales.values()).sort((a, b) => b.total - a.total).slice(0, 5);
   }, [filteredTransactions]);
+
+  // Date range validation for filter
+  const handleSetDate = (range: DateRange | undefined) => {
+    if (range && range.from && range.to) {
+      const diff = (range.to.getTime() - range.from.getTime()) / (1000 * 60 * 60 * 24);
+      if (diff > 90) {
+        toast({ title: 'Range tanggal terlalu panjang', description: 'Maksimal 90 hari.', variant: 'destructive' });
+        return;
+      }
+    }
+    setDate(range);
+  };
 
   return (
     <div className="flex flex-col gap-4 sm:gap-6">
@@ -187,16 +209,17 @@ export default function DashboardPage() {
                   defaultMonth={date?.from}
                   selected={date}
                   // @ts-ignore
-                  onSelect={(range: any) => {
-                    if (range && range.from) {
-                      setDate({ from: range.from, to: range.to });
-                    }
-                  }}
+                  onSelect={handleSetDate}
                   numberOfMonths={2}
                 />
               </PopoverContent>
             </Popover>
           </div>
+        </div>
+      )}
+      {error && (
+        <div className="bg-red-100 text-red-700 rounded p-2 text-xs font-semibold border border-red-300">
+          {error}
         </div>
       )}
       {/* Kartu tombol menu utama kasir */}
