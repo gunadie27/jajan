@@ -80,6 +80,16 @@ async function main() {
   });
   console.log(`Created product with id: ${product1.id}`);
 
+  await prisma.productVariant.create({
+    data: {
+      productId: product1.id,
+      name: 'Original',
+      price: 15000,
+      cogs: 10000,
+      stock: 100,
+    },
+  });
+
   const product2 = await prisma.product.create({
     data: {
       name: 'Es Teh Manis',
@@ -89,6 +99,16 @@ async function main() {
     },
   });
   console.log(`Created product with id: ${product2.id}`);
+
+  await prisma.productVariant.create({
+    data: {
+      productId: product2.id,
+      name: 'Original',
+      price: 5000,
+      cogs: 2000,
+      stock: 100,
+    },
+  });
 
   console.log(`Seeding finished.`);
 }
