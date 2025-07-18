@@ -7,11 +7,6 @@ import sharp from 'sharp'
 
 const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/jpg'];
 const MAX_SIZE = 2 * 1024 * 1024; // 2MB
-const allowedOrigins = [
-  'https://app.namadomain.com',
-  'http://localhost:3000',
-  'https://app.maujajan.id'
-];
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -19,26 +14,19 @@ const supabase = createClient(
 );
 
 export async function OPTIONS(request: NextRequest) {
-  const origin = request.headers.get('origin') || '';
-  if (!allowedOrigins.includes(origin)) {
-    return new NextResponse('CORS Forbidden', { status: 403 });
-  }
+  const origin = request.headers.get('origin') || '*';
   return new NextResponse(null, {
     status: 204,
     headers: {
       'Access-Control-Allow-Origin': origin,
       'Access-Control-Allow-Methods': 'POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, x-user-role',
+      'Access-Control-Allow-Headers': 'Content-Type',
     },
   });
 }
 
 export async function POST(request: NextRequest) {
-  const origin = request.headers.get('origin') || '';
-  if (!allowedOrigins.includes(origin)) {
-    console.warn('CORS Forbidden upload attempt from', origin);
-    return NextResponse.json({ success: false, error: 'CORS Forbidden' }, { status: 403 });
-  }
+  const origin = request.headers.get('origin') || '*';
 
   const data = await request.formData()
   const file: File | null = data.get('file') as unknown as File
