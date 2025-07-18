@@ -211,7 +211,7 @@ function ProductForm({
               onClick={triggerFileUpload}
             >
               {imagePreview ? (
-                 <Image src={imagePreview} alt="Product preview" width={192} height={192} className="object-cover h-full w-full rounded-md"/>
+                 <img src={imagePreview ?? ''} alt="Product preview" width={192} height={192} style={{objectFit:'cover',height:'100%',width:'100%',borderRadius:8}} />
               ) : (
                 <div className="text-center text-muted-foreground">
                   <Upload className="mx-auto h-7 w-7" />
@@ -543,7 +543,7 @@ export default function ManageProductsPage() {
                 {products.map((product, idx) => (
                   <TableRow key={product.id} className={cn("transition-colors", idx % 2 === 0 ? "bg-white" : "bg-[#F5F8FF]") + " hover:bg-primary/5"}>
                     <TableCell className="py-2 px-2 text-xs">
-                      <Image src={product.imageUrl} alt={product.name} width={40} height={40} className="rounded-md object-cover" />
+                      <img src={product.imageUrl} alt={product.name} width={40} height={40} style={{borderRadius:8,objectFit:'cover'}} />
                     </TableCell>
                     <TableCell className="py-2 px-2 font-medium text-xs">{product.name}</TableCell>
                     <TableCell className="py-2 px-2 text-xs">{product.category}</TableCell>
