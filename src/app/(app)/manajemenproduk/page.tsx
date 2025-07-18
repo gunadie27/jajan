@@ -192,7 +192,7 @@ function ProductForm({
   return (
     <Dialog open={true} onOpenChange={onCancel}>
       <DialogContent
-        className="max-w-[98vw] sm:max-w-[400px] w-full p-3 sm:p-5 rounded-2xl border-0 shadow-xl bg-gradient-to-br from-blue-50 via-white to-purple-100 !overflow-visible max-h-[90vh] overflow-y-auto"
+        className="max-w-[98vw] sm:max-w-[400px] w-full p-3 sm:p-5 rounded-2xl border-0 shadow-xl bg-gradient-to-br from-blue-50 via-white to-purple-100 max-h-[80vh] min-h-[60vh] overflow-y-auto"
         style={{ boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.18)' }}
       >
         <DialogHeader>
