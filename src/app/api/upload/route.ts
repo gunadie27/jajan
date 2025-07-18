@@ -1,5 +1,5 @@
 
-import { writeFile } from 'fs/promises'
+import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server'
 import { join } from 'path'
 import { z } from 'zod'
@@ -8,6 +8,11 @@ import sharp from 'sharp'
 const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/jpg'];
 const MAX_SIZE = 2 * 1024 * 1024; // 2MB
 const allowedOrigins = ['https://app.namadomain.com', 'http://localhost:3000'];
+
+const supabase = createClient(
+  process.env.SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
 
 export async function OPTIONS(request: NextRequest) {
   const origin = request.headers.get('origin') || '';
@@ -81,14 +86,28 @@ export async function POST(request: NextRequest) {
   // Rename file ke nama acak
   const ext = file.name.split('.').pop() || 'jpg';
   const filename = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}.${ext}`;
-  const path = join(process.cwd(), 'public/uploads', filename)
-  await writeFile(path, compressedBuffer)
-  console.log(`Upload success: ${filename} from ${origin}`)
-
-  return new NextResponse(JSON.stringify({ success: true, path: `/uploads/${filename}` }), {
-    status: 200,
-    headers: {
-      'Access-Control-Allow-Origin': origin,
-    },
-  });
+  // Upload ke Supabase Storage
+  try {
+    const { data, error } = await supabase.storage
+      .from('produkimg')
+      .upload(filename, compressedBuffer, {
+        contentType: file.type,
+        upsert: false,
+      });
+    if (error) {
+      console.error('Supabase upload error:', error.message);
+      return NextResponse.json({ success: false, error: 'Supabase upload failed: ' + error.message }, { status: 500 });
+    }
+    // Ambil public URL
+    const { data: publicUrlData } = supabase.storage.from('produkimg').getPublicUrl(filename);
+    return new NextResponse(JSON.stringify({ success: true, path: publicUrlData.publicUrl }), {
+      status: 200,
+      headers: {
+        'Access-Control-Allow-Origin': origin,
+      },
+    });
+  } catch (err) {
+    console.error('Supabase upload exception:', err);
+    return NextResponse.json({ success: false, error: 'Supabase upload exception' }, { status: 500 });
+  }
 }
