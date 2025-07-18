@@ -12,6 +12,10 @@ const nextConfig: NextConfig = {
     // This is required to allow requests from cloud-based development environments
   },
   images: {
+    domains: [
+      'geqebteyoseuvcmpvimp.supabase.co',
+      // tambahkan domain lain jika perlu
+    ],
     remotePatterns: [
       {
         protocol: 'https',
