@@ -31,8 +31,36 @@ import type {
     ProductVariant,
     OrderItem
 } from "@/lib/types";
+import { z } from 'zod';
+import fs from 'fs';
+import path from 'path';
 
 const prisma = new PrismaClient();
+
+// Zod schema untuk validasi user
+const userSchema = z.object({
+  name: z.string().min(2).max(50),
+  username: z.string().min(4).max(32).regex(/^[a-zA-Z0-9_]+$/),
+  email: z.string().email(),
+  password: z.string().min(8),
+  role: z.enum(['owner', 'cashier']),
+  outletId: z.string().optional(),
+});
+
+// Zod schema untuk validasi produk
+const productSchema = z.object({
+  name: z.string().min(2).max(100),
+  category: z.string().min(2).max(50),
+  imageUrl: z.string().url().optional(),
+  outletId: z.string(),
+  variants: z.array(z.object({
+    name: z.string().min(1).max(50),
+    price: z.number().min(0),
+    cogs: z.number().min(0),
+    stock: z.number().min(0),
+    trackStock: z.boolean().optional(),
+  }))
+});
 
 // --- Product Service ---
 export async function getProducts(): Promise<Product[]> {
@@ -47,13 +75,23 @@ export async function getProducts(): Promise<Product[]> {
     return products as any;
 }
 
-export async function addProduct(productData: Omit<Product, 'id'>): Promise<Product> {
-    const { name, category, imageUrl, variants } = productData;
+export async function addProduct(productData: Omit<Product, 'id'>, currentUser: User): Promise<Product> {
+    productSchema.parse(productData);
+    // Hanya owner dan kasir yang boleh tambah produk
+    if (currentUser.role !== 'owner' && currentUser.role !== 'cashier') {
+        throw new Error('Forbidden: Only owner or cashier can add product');
+    }
+    // Jika kasir, hanya boleh untuk outlet sendiri
+    if (currentUser.role === 'cashier' && productData.outletId !== currentUser.outletId) {
+        throw new Error('Forbidden: Cashier can only add product for their own outlet');
+    }
+    const { name, category, imageUrl, variants, outletId } = productData;
     const newProduct = await prisma.product.create({
         data: {
             name,
             category,
             imageUrl,
+            outletId,
             variants: {
                 create: variants.map(v => ({
                     name: v.name,
@@ -73,12 +111,13 @@ export async function addProduct(productData: Omit<Product, 'id'>): Promise<Prod
 
 export async function updateProduct(productId: string, productData: Omit<Product, 'id'>): Promise<Product> {
     const { name, category, imageUrl, variants } = productData;
-    
+
+    // Ambil data produk lama
+    const oldProduct = await prisma.product.findUnique({ where: { id: productId } });
     // Prisma doesn't support direct upsert on nested relations with a custom ID.
     // So we manage variants manually: delete old ones, create new ones.
     const updatedProduct = await prisma.$transaction(async (tx) => {
         await tx.productVariant.deleteMany({ where: { productId }});
-
         return tx.product.update({
             where: { id: productId },
             data: {
@@ -99,6 +138,16 @@ export async function updateProduct(productId: string, productData: Omit<Product
         });
     });
 
+    // Hapus file gambar lama jika diganti dan tidak dipakai produk lain
+    if (oldProduct && oldProduct.imageUrl && oldProduct.imageUrl !== imageUrl) {
+        const count = await prisma.product.count({ where: { imageUrl: oldProduct.imageUrl } });
+        if (count === 1) {
+            const filePath = path.join(process.cwd(), 'public', oldProduct.imageUrl);
+            if (fs.existsSync(filePath)) {
+                fs.unlinkSync(filePath);
+            }
+        }
+    }
     return updatedProduct as any;
 }
 
@@ -145,7 +194,18 @@ export async function getTransactions(outletId?: string): Promise<Transaction[]>
     })) as any;
 }
 
-export async function addTransaction(transactionData: Omit<Transaction, 'id'>): Promise<Transaction> {
+export async function addTransaction(transactionData: Omit<Transaction, 'id'>, currentUser: User): Promise<Transaction> {
+    // Hanya owner dan kasir yang boleh menambah transaksi
+    if (currentUser.role !== 'owner' && currentUser.role !== 'cashier') {
+        throw new Error('Forbidden: Only owner or cashier can add transaction');
+    }
+    // Jika kasir, pastikan hanya untuk outlet-nya sendiri
+    if (currentUser.role === 'cashier') {
+        const outletRecord = await prisma.outlet.findUnique({ where: { name: transactionData.outlet } });
+        if (!outletRecord || outletRecord.id !== currentUser.outletId) {
+            throw new Error('Forbidden: Cashier can only add transaction for their own outlet');
+        }
+    }
     const { items, total, date, outlet, orderChannel, paymentMethod, cashReceived, change, customerId, customerName, cashierSessionId } = transactionData;
 
     const outletRecord = await prisma.outlet.findUnique({ where: { name: outlet } });
@@ -200,11 +260,29 @@ export async function getExpenses(outletId?: string): Promise<Expense[]> {
     return expenses.map(e => ({...e, outlet: e.outletName})) as any;
 }
 
-export async function addExpense(expenseData: Omit<Expense, 'id'>): Promise<Expense> {
-    const { description, amount, category, date, outlet, cashierSessionId } = expenseData;
-    const outletRecord = await prisma.outlet.findUnique({ where: { name: outlet } });
-    if (!outletRecord) throw new Error("Outlet not found");
+// Zod schema untuk validasi expense
+const expenseSchema = z.object({
+  description: z.string().min(2).max(100),
+  amount: z.number().min(1),
+  category: z.string().min(2).max(50),
+  date: z.date(),
+  outlet: z.string().min(2),
+  cashierSessionId: z.string().optional(),
+});
 
+export async function addExpense(expenseData: Omit<Expense, 'id'>, currentUser: User): Promise<Expense> {
+    expenseSchema.parse(expenseData);
+    // Hanya owner dan kasir yang boleh tambah expense
+    if (currentUser.role !== 'owner' && currentUser.role !== 'cashier') {
+        throw new Error('Forbidden: Only owner or cashier can add expense');
+    }
+    // Jika kasir, hanya boleh untuk outlet sendiri
+    const outletRecord = await prisma.outlet.findUnique({ where: { name: expenseData.outlet } });
+    if (!outletRecord) throw new Error("Outlet not found");
+    if (currentUser.role === 'cashier' && outletRecord.id !== currentUser.outletId) {
+        throw new Error('Forbidden: Cashier can only add expense for their own outlet');
+    }
+    const { description, amount, category, date, outlet, cashierSessionId } = expenseData;
     const newExpense = await prisma.expense.create({
         data: {
             description,
@@ -251,26 +329,27 @@ export async function getUsers(): Promise<User[]> {
 }
 
 export async function verifyUserPassword(username: string, passwordAttempt: string): Promise<User | null> {
-    console.log(`[DEBUG] Attempting login for username: ${username}`);
+    console.log(`[LOGIN] Attempt for username: ${username}`);
     const user = await prisma.user.findUnique({ where: { username } });
-    console.log(`[DEBUG] Result of findUnique for ${username}:`, user ? 'User found' : 'User not found');
     if (user && user.password) {
-        console.log(`[DEBUG] User found. Comparing password for username: ${username}`);
-        console.log(`[DEBUG] Password Attempt: ${passwordAttempt}`);
-        console.log(`[DEBUG] Stored Hash: ${user.password}`);
         const isMatch = await bcrypt.compare(passwordAttempt, user.password);
-        console.log(`[DEBUG] bcrypt.compare result: ${isMatch}`);
         if (isMatch) {
+            console.log(`[LOGIN] Success for username: ${username}`);
             const { password, ...userToReturn } = user;
-            console.log(`[DEBUG] Login successful for username: ${username}`);
             return userToReturn as any;
         }
     }
-    console.log(`[DEBUG] Login failed for username: ${username}`);
+    console.warn(`[LOGIN] Failed for username: ${username}`);
     return null;
 }
 
-export async function addUser(userData: Omit<User, 'id' | 'password'> & { password?: string }): Promise<User> {
+export async function addUser(userData: Omit<User, 'id' | 'password'> & { password?: string }, currentUser: User): Promise<User> {
+    // Hanya owner yang boleh menambah user
+    if (currentUser.role !== 'owner') {
+        throw new Error('Forbidden: Only owner can add user');
+    }
+    // Validasi input dengan zod
+    userSchema.parse(userData);
     if (!userData.password) throw new Error("Password is required for new user");
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(userData.password, salt);
@@ -292,7 +371,12 @@ export async function addUser(userData: Omit<User, 'id' | 'password'> & { passwo
     return userToReturn as any;
 }
 
-export async function updateUser(userId: string, userData: Partial<Omit<User, 'id'>>): Promise<User> {
+export async function updateUser(userId: string, userData: Partial<Omit<User, 'id'>>, currentUser: User): Promise<User> {
+    // Hanya owner yang boleh update user
+    if (currentUser.role !== 'owner') {
+        console.warn(`[USER] Forbidden update attempt by ${currentUser.username}`);
+        throw new Error('Forbidden: Only owner can update user');
+    }
     let dataToUpdate: any = {
         name: userData.name,
         username: userData.username,
@@ -308,6 +392,7 @@ export async function updateUser(userId: string, userData: Partial<Omit<User, 'i
         data: dataToUpdate
     });
     const { password, ...userToReturn } = updatedUser;
+    console.log(`[USER] User updated: ${userId} by ${currentUser.username}`);
     return userToReturn as any;
 }
 
@@ -320,7 +405,27 @@ export async function getCustomers(): Promise<Customer[]> {
     return await prisma.customer.findMany({ orderBy: { lastTransactionDate: 'desc' } }) as any;
 }
 
-export async function addCustomer(customerData: Omit<Customer, 'id'>): Promise<Customer> {
+// Zod schema untuk validasi customer
+const customerSchema = z.object({
+  name: z.string().min(2).max(50),
+  phoneNumber: z.string().min(8).max(20),
+  firstTransactionDate: z.date(),
+  lastTransactionDate: z.date(),
+  totalSpent: z.number().min(0),
+  transactionIds: z.array(z.string()),
+  outletId: z.string(),
+});
+
+export async function addCustomer(customerData: Omit<Customer, 'id'>, currentUser: User): Promise<Customer> {
+    customerSchema.parse(customerData);
+    // Hanya owner dan kasir yang boleh tambah customer
+    if (currentUser.role !== 'owner' && currentUser.role !== 'cashier') {
+        throw new Error('Forbidden: Only owner or cashier can add customer');
+    }
+    // Jika kasir, hanya boleh untuk outlet sendiri
+    if (currentUser.role === 'cashier' && customerData.outletId !== currentUser.outletId) {
+        throw new Error('Forbidden: Cashier can only add customer for their own outlet');
+    }
     try {
         const newCustomer = await prisma.customer.create({ data: customerData });
         return newCustomer as any;
