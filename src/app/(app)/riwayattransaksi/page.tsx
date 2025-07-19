@@ -202,7 +202,7 @@ export default function TransactionHistoryPage() {
               ) : (
                 filteredTransactions.map((transaction, idx) => (
                   <TableRow key={transaction.id} className={((idx % 2 === 0) ? "bg-white" : "bg-[#F5F8FF]") + " hover:bg-primary/5 transition-colors"}>
-                    <TableCell className="py-2 px-2 font-mono text-[11px]">{transaction.id}</TableCell>
+                    <TableCell className="py-2 px-2 font-mono text-[11px]">{transaction.transactionNumber || transaction.id}</TableCell>
                     <TableCell className="py-2 px-2">{format(new Date(transaction.date), "dd/MM/yyyy HH:mm")}</TableCell>
                     <TableCell className="py-2 px-2">{transaction.outlet}</TableCell>
                     <TableCell className="py-2 px-2 capitalize">{transaction.orderChannel}</TableCell>
