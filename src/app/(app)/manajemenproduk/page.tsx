@@ -208,7 +208,7 @@ function ProductForm({
   return (
     <Dialog open={true} onOpenChange={onCancel}>
       <DialogContent
-        className="max-w-[98vw] sm:max-w-[600px] w-full p-3 sm:p-5 rounded-2xl border-0 shadow-xl bg-gradient-to-br from-blue-50 via-white to-purple-100 max-h-[80vh] min-h-[60vh] overflow-y-auto"
+        className="max-w-[98vw] sm:max-w-[700px] w-full p-3 sm:p-6 rounded-2xl border-0 shadow-xl bg-gradient-to-br from-blue-50 via-white to-purple-100 max-h-[80vh] min-h-[60vh] overflow-y-auto"
         style={{ boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.18)' }}
       >
         <DialogHeader>
@@ -312,13 +312,39 @@ function ProductForm({
                        <Label htmlFor={`variant-name-${index}`} className="text-xs">Nama Varian</Label>
                        <Input id={`variant-name-${index}`} name="name" value={variant.name} onChange={e => handleVariantChange(index, e)} placeholder="e.g. Regular" required className="rounded-lg px-3 py-1.5 text-xs sm:text-sm" />
                     </div>
-                     <div className="col-span-6 sm:col-span-2 space-y-1">
-                       <Label htmlFor={`variant-price-${index}`} className="text-xs">Harga Jual</Label>
-                       <Input id={`variant-price-${index}`} type="number" name="price" value={variant.price} onChange={e => handleVariantChange(index, e)} required className="rounded-lg px-3 py-1.5 text-xs sm:text-sm" />
+                    {/* HPP (cogs) sebelum Harga Jual */}
+                    <div className="col-span-6 sm:col-span-2 space-y-1">
+                      <Label htmlFor={`variant-cogs-${index}`} className="text-xs">HPP</Label>
+                      <Input
+                        id={`variant-cogs-${index}`}
+                        type="text"
+                        name="cogs"
+                        inputMode="numeric"
+                        value={variant.cogs ? variant.cogs.toLocaleString('id-ID') : ''}
+                        onChange={e => {
+                          const raw = e.target.value.replace(/[^\d]/g, '');
+                          handleVariantChange(index, { target: { name: 'cogs', value: raw } } as any);
+                        }}
+                        required
+                        className="rounded-lg px-3 py-1.5 text-xs sm:text-sm"
+                      />
                     </div>
-                     <div className="col-span-6 sm:col-span-2 space-y-1">
-                       <Label htmlFor={`variant-cogs-${index}`} className="text-xs">HPP</Label>
-                       <Input id={`variant-cogs-${index}`} type="number" name="cogs" value={variant.cogs} onChange={e => handleVariantChange(index, e)} required className="rounded-lg px-3 py-1.5 text-xs sm:text-sm" />
+                    {/* Harga Jual */}
+                    <div className="col-span-6 sm:col-span-2 space-y-1">
+                      <Label htmlFor={`variant-price-${index}`} className="text-xs">Harga Jual</Label>
+                      <Input
+                        id={`variant-price-${index}`}
+                        type="text"
+                        name="price"
+                        inputMode="numeric"
+                        value={variant.price ? variant.price.toLocaleString('id-ID') : ''}
+                        onChange={e => {
+                          const raw = e.target.value.replace(/[^\d]/g, '');
+                          handleVariantChange(index, { target: { name: 'price', value: raw } } as any);
+                        }}
+                        required
+                        className="rounded-lg px-3 py-1.5 text-xs sm:text-sm"
+                      />
                     </div>
                     <div className={`col-span-6 sm:col-span-2 space-y-1 transition-opacity duration-300 ${variant.trackStock ? 'opacity-100' : 'opacity-50'}`}> 
                        <Label htmlFor={`variant-stock-${index}`} className="text-xs">Stok</Label>
@@ -588,7 +614,7 @@ export default function ManageProductsPage() {
               </TableHeader>
               <TableBody>
                 {products.map((product, idx) => (
-                  <TableRow key={product.id} className={cn("transition-colors", idx % 2 === 0 ? "bg-white" : "bg-[#F5F8FF]") + " hover:bg-primary/5"}>
+                  <TableRow key={product.id} className={cn('transition-colors', idx % 2 === 0 ? 'bg-white' : 'bg-[#F5F8FF]', 'hover:bg-primary/5')}>
                     <TableCell className="py-2 px-2 text-xs">
                       <img src={product.imageUrl} alt={product.name} width={40} height={40} style={{borderRadius:8,objectFit:'cover'}} />
                     </TableCell>
