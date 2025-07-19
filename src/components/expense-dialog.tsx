@@ -120,7 +120,11 @@ export function ExpenseDialog({
         await updateExpense(expense.id, formData);
         toast({ title: "Sukses", description: "Pengeluaran berhasil diperbarui" });
       } else {
-        await addExpense(formData);
+        if (!user) {
+          toast({ variant: "destructive", title: "Error", description: "User tidak ditemukan. Silakan login ulang." });
+          return;
+        }
+        await addExpense(formData, user);
         toast({ title: "Sukses", description: "Pengeluaran berhasil ditambahkan" });
       }
       onSaveSuccess?.();
