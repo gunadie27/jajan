@@ -648,7 +648,11 @@ export default function ManageProductsPage() {
                       <img src={product.imageUrl} alt={product.name} width={40} height={40} style={{borderRadius:8,objectFit:'cover'}} />
                     </TableCell>
                     <TableCell className="py-2 px-2 font-medium text-xs">{product.name}</TableCell>
-                    <TableCell className="py-2 px-2 text-xs">{product.category}</TableCell>
+                    <TableCell className="py-2 px-2 text-xs">{
+                      typeof product.category === 'object' && product.category !== null
+                        ? product.category.name
+                        : product.category
+                    }</TableCell>
                     <TableCell className="py-2 px-2 text-xs">
                       {product.variants.map(v => v.name).join(", ")}
                     </TableCell>

@@ -50,7 +50,7 @@ const userSchema = z.object({
 // Zod schema untuk validasi produk
 const productSchema = z.object({
   name: z.string().min(2).max(100),
-  category: z.string().min(2).max(50),
+  categoryId: z.string().min(1),
   imageUrl: z.string().url().optional(),
   outletId: z.string(),
   variants: z.array(z.object({
@@ -99,11 +99,12 @@ export async function addProduct(productData: Omit<Product, 'id'> & { categoryId
         throw new Error('Forbidden: Cashier can only add product for their own outlet');
     }
     const { name, imageUrl, variants, outletId, categoryId } = productData;
+    console.log('DEBUG addProduct:', { outletId, categoryId, name });
     const data: any = {
         name,
         imageUrl,
         outletId,
-        categoryId,
+        categoryId: Number(categoryId),
         variants: {
             create: variants.map(v => ({
                 name: v.name,
