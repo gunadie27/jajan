@@ -21,6 +21,7 @@ import Image from "next/image";
 import type { OrderItem, Product, ProductVariant, Transaction, Customer, OrderChannel, PaymentMethod, PlatformSettings, Outlet } from "@/lib/types";
 import { X, Plus, Minus, CreditCard, ScanLine, CheckCircle, Printer, ClipboardList, ShoppingBag, Send, Handshake, Store, Utensils, Bike, ShoppingCart } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
 import { Receipt } from "@/components/receipt";
 import { 
     getProducts, 
@@ -277,6 +278,7 @@ export default function POSPage() {
   const [orderChannel, setOrderChannel] = useState<OrderChannel>('store');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
   const { toast } = useToast();
+  const { user } = useAuth();
   const router = useRouter();
   // const isMobile = useIsMobile(); // (opsional, jika ingin dipakai untuk deteksi mobile di komponen)
 
@@ -356,6 +358,15 @@ export default function POSPage() {
   const total = calculateTotal(order);
 
   const handlePayment = async (customerId?: string, customerName?: string) => {
+    if (!user) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "User tidak ditemukan"
+      });
+      return;
+    }
+
     const finalTotal = total;
 
     const newTransactionData: Omit<Transaction, 'id'> = {
@@ -393,29 +404,36 @@ export default function POSPage() {
         return; 
     }
     
-    // Deduct stock
-    for (const item of order) {
-        if (item.variant.trackStock) {
-            await updateProductStock(item.product.id, item.variant.id, -item.quantity);
-        }
+    try {
+      // Deduct stock
+      for (const item of order) {
+          if (item.variant.trackStock) {
+              await updateProductStock(item.product.id, item.variant.id, -item.quantity);
+          }
+      }
+      // Refresh local product state
+      const updatedProducts = await getProducts();
+      setProducts(updatedProducts);
+
+      // Add transaction
+      const newTransaction = await addTransaction(newTransactionData, user);
+      setLastTransaction(newTransaction);
+      
+      setOrder([]);
+      setCashReceived(0);
+      setFormattedCashReceived('');
+      setPaymentDialogOpen(false);
+      setPaymentSuccessDialogOpen(true);
+      setOrderChannel('store');
+      setPaymentMethod('cash');
+    } catch (error) {
+      console.error('Error processing payment:', error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Gagal memproses pembayaran"
+      });
     }
-    // Refresh local product state
-    const updatedProducts = await getProducts();
-    setProducts(updatedProducts);
-
-    // Add transaction
-    const newTransaction = await addTransaction(newTransactionData);
-    setLastTransaction(newTransaction);
-    
-    
-
-    setOrder([]);
-    setCashReceived(0);
-    setFormattedCashReceived('');
-    setPaymentDialogOpen(false);
-    setPaymentSuccessDialogOpen(true);
-    setOrderChannel('store');
-    setPaymentMethod('cash');
   };
 
   const handlePrintReceipt = () => {
@@ -428,55 +446,64 @@ export default function POSPage() {
   }
   
   const handleWhatsAppConfirm = async (name: string, phone: string) => {
-    if (!lastTransaction) return;
+    if (!lastTransaction || !user) return;
 
     let customerId;
     let existingCustomer = customers.find(c => c.phoneNumber === phone);
     
-    if (existingCustomer) {
-        console.log("Existing customer found:", existingCustomer);
-        console.log("Last transaction total:", lastTransaction?.total);
-        const updatedCustomerData: Partial<Omit<Customer, 'id'>> = {
-            lastTransactionDate: new Date(),
-            totalSpent: existingCustomer.totalSpent + (lastTransaction?.total || 0),
-            transactionIds: [...existingCustomer.transactionIds, lastTransaction.id],
-        };
-        console.log("Data to update customer with:", updatedCustomerData);
-        const updatedCustomer = await updateCustomer(existingCustomer.id, updatedCustomerData);
-        console.log("Updated customer from DB:", updatedCustomer);
-        setCustomers(prev => prev.map(c => c.id === updatedCustomer.id ? updatedCustomer : c));
-        customerId = updatedCustomer.id;
-        router.refresh();
-    } else {
-        const newCustomerData: Omit<Customer, 'id'> = {
-            name: name,
-            phoneNumber: phone,
-            firstTransactionDate: new Date(),
-            lastTransactionDate: new Date(),
-            totalSpent: lastTransaction?.total || 0,
-            transactionIds: lastTransaction ? [lastTransaction.id] : [],
-        };
-        const newCustomer = await addCustomer(newCustomerData);
-        setCustomers(prev => [...prev, newCustomer]);
-        customerId = newCustomer.id;
-        router.refresh();
-    }
-    
-    // Update the transaction in the database so it is linked to the customer
-    // This ensures customer analytics (total belanja, total transaksi) are correct
-    if (lastTransaction && customerId) {
-      if (typeof updateTransaction === 'function') {
-        await updateTransaction(lastTransaction.id, {
-          customerId: customerId,
-          customerName: name || undefined,
-        });
+    try {
+      if (existingCustomer) {
+          console.log("Existing customer found:", existingCustomer);
+          console.log("Last transaction total:", lastTransaction?.total);
+          const updatedCustomerData: Partial<Omit<Customer, 'id'>> = {
+              lastTransactionDate: new Date(),
+              totalSpent: existingCustomer.totalSpent + (lastTransaction?.total || 0),
+              transactionIds: [...existingCustomer.transactionIds, lastTransaction.id],
+          };
+          console.log("Data to update customer with:", updatedCustomerData);
+          const updatedCustomer = await updateCustomer(existingCustomer.id, updatedCustomerData);
+          console.log("Updated customer from DB:", updatedCustomer);
+          setCustomers(prev => prev.map(c => c.id === updatedCustomer.id ? updatedCustomer : c));
+          customerId = updatedCustomer.id;
+          router.refresh();
       } else {
-        // TODO: Implement updateTransaction in data-service if not available
+          const newCustomerData: Omit<Customer, 'id'> = {
+              name: name,
+              phoneNumber: phone,
+              firstTransactionDate: new Date(),
+              lastTransactionDate: new Date(),
+              totalSpent: lastTransaction?.total || 0,
+              transactionIds: lastTransaction ? [lastTransaction.id] : [],
+          };
+          const newCustomer = await addCustomer(newCustomerData, user);
+          setCustomers(prev => [...prev, newCustomer]);
+          customerId = newCustomer.id;
+          router.refresh();
       }
+      
+      // Update the transaction in the database so it is linked to the customer
+      // This ensures customer analytics (total belanja, total transaksi) are correct
+      if (lastTransaction && customerId) {
+        if (typeof updateTransaction === 'function') {
+          await updateTransaction(lastTransaction.id, {
+            customerId: customerId,
+            customerName: name || undefined,
+          });
+        } else {
+          // TODO: Implement updateTransaction in data-service if not available
+        }
+      }
+      // Update local state for receipt
+      const updatedTransaction = { ...lastTransaction, customerId: customerId, customerName: name || undefined };
+      setLastTransaction(updatedTransaction);
+    } catch (error) {
+      console.error('Error saving customer data:', error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Gagal menyimpan data pelanggan"
+      });
     }
-    // Update local state for receipt
-    const updatedTransaction = { ...lastTransaction, customerId: customerId, customerName: name || undefined };
-    setLastTransaction(updatedTransaction);
   }
 
   const handleCloseWhatsAppDialog = () => {
