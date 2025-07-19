@@ -75,21 +75,35 @@ export async function getProducts(): Promise<Product[]> {
     return products as any;
 }
 
-export async function addProduct(productData: Omit<Product, 'id'>, currentUser: User): Promise<Product> {
+export async function getProductCategories(): Promise<{ id: string; name: string }[]> {
+  const categories = await prisma.productCategory.findMany({
+    select: { id: true, name: true },
+    orderBy: { name: 'asc' }
+  });
+  return categories;
+}
+
+export async function addProductCategory(name: string): Promise<{ id: string; name: string }> {
+  const newCategory = await prisma.productCategory.create({
+    data: { name }
+  });
+  return newCategory;
+}
+
+export async function addProduct(productData: Omit<Product, 'id'> & { categoryId: string }, currentUser: User): Promise<Product> {
     productSchema.parse(productData);
-    // Hanya owner dan kasir yang boleh tambah produk
     if (currentUser.role !== 'owner' && currentUser.role !== 'cashier') {
         throw new Error('Forbidden: Only owner or cashier can add product');
     }
-    // Jika kasir, hanya boleh untuk outlet sendiri
     if (currentUser.role === 'cashier' && productData.outletId !== currentUser.outletId) {
         throw new Error('Forbidden: Cashier can only add product for their own outlet');
     }
-    const { name, category, imageUrl, variants, outletId } = productData;
+    const { name, imageUrl, variants, outletId, categoryId } = productData;
     const data: any = {
         name,
-        category,
         imageUrl,
+        outletId,
+        categoryId,
         variants: {
             create: variants.map(v => ({
                 name: v.name,
@@ -100,11 +114,11 @@ export async function addProduct(productData: Omit<Product, 'id'>, currentUser: 
             }))
         }
     };
-    if (outletId) data.outletId = outletId;
     const newProduct = await prisma.product.create({
         data,
         include: {
-            variants: true
+            variants: true,
+            category: true
         }
     });
     return newProduct as any;

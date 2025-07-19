@@ -11,16 +11,16 @@ datasource db {
 model Outlet {
   id              String           @id @default(uuid())
   name            String           @unique
-  code            String?          @unique // kode outlet singkat, otomatis dari nama
   address         String
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
+  code            String?          @unique
   cashierSessions CashierSession[]
+  customers       Customer[]       @relation("OutletCustomers")
   expenses        Expense[]
+  products        Product[]        @relation("OutletProducts")
   transactions    Transaction[]
   users           User[]           @relation("OutletUsers")
-  products        Product[]        @relation("OutletProducts")
-  customers       Customer[]       @relation("OutletCustomers")
 }
 
 model User {
@@ -37,18 +37,25 @@ model User {
   outlet    Outlet           @relation("OutletUsers", fields: [outletId], references: [id])
 }
 
+model ProductCategory {
+  id       Int       @id @default(autoincrement())
+  name     String    @db.VarChar(100)
+  products Product[]
+}
+
 model Product {
   id         String           @id @default(uuid())
   name       String           @unique
-  category   String
   imageUrl   String
   dataAiHint String?
-  outletId   String
   createdAt  DateTime         @default(now())
   updatedAt  DateTime         @updatedAt
+  outletId   String
+  categoryId Int
   orderItems OrderItem[]
-  variants   ProductVariant[]
+  category   ProductCategory  @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   outlet     Outlet           @relation("OutletProducts", fields: [outletId], references: [id])
+  variants   ProductVariant[]
 }
 
 model ProductVariant {
@@ -66,23 +73,23 @@ model ProductVariant {
 }
 
 model Transaction {
-  id               String          @id @default(uuid())
-  transactionNumber String?         @unique // nomor transaksi singkat
-  date             DateTime        @default(now())
-  total            Float
-  outletName       String
-  orderChannel     String
-  paymentMethod    String
-  cashReceived     Float?
-  change           Float?
-  customerId       String?
-  customerName     String?
-  cashierSessionId String?
-  outletId         String
-  items            OrderItem[]
-  cashierSession   CashierSession? @relation(fields: [cashierSessionId], references: [id])
-  customer         Customer?       @relation(fields: [customerId], references: [id])
-  outlet           Outlet          @relation(fields: [outletId], references: [id])
+  id                String          @id @default(uuid())
+  date              DateTime        @default(now())
+  total             Float
+  outletName        String
+  orderChannel      String
+  paymentMethod     String
+  cashReceived      Float?
+  change            Float?
+  customerId        String?
+  customerName      String?
+  cashierSessionId  String?
+  outletId          String
+  transactionNumber String?         @unique
+  items             OrderItem[]
+  cashierSession    CashierSession? @relation(fields: [cashierSessionId], references: [id])
+  customer          Customer?       @relation(fields: [customerId], references: [id])
+  outlet            Outlet          @relation(fields: [outletId], references: [id])
 }
 
 model OrderItem {
@@ -123,11 +130,11 @@ model Customer {
   lastTransactionDate  DateTime
   totalSpent           Float
   transactionIds       String[]
-  outletId             String
   createdAt            DateTime      @default(now())
   updatedAt            DateTime      @updatedAt
-  transactions         Transaction[]
+  outletId             String
   outlet               Outlet        @relation("OutletCustomers", fields: [outletId], references: [id])
+  transactions         Transaction[]
 }
 
 model CashierSession {

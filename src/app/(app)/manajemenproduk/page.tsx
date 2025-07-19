@@ -35,7 +35,7 @@ import { Badge } from "@/components/ui/badge";
 import type { Product, PlatformSettings, OrderChannel } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
-import { getProducts, addProduct, updateProduct, deleteProduct, getPlatformSettings, updatePlatformSettings, getOrderChannels } from "@/services/data-service";
+import { getProducts, addProduct, updateProduct, deleteProduct, getPlatformSettings, updatePlatformSettings, getOrderChannels, getProductCategories, addProductCategory } from "@/services/data-service";
 import { cn } from "@/lib/utils";
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "@/components/ui/accordion";
 
@@ -50,35 +50,39 @@ function ProductForm({
   product,
   onSave,
   onCancel,
-  productCategories,
   user,
 }: {
   product: Product | null;
-  onSave: (product: Omit<Product, 'id'>) => void;
+  onSave: (product: Omit<Product, 'id'> & { categoryId: string }) => void;
   onCancel: () => void;
-  productCategories: string[];
   user: any;
 }) {
-  const [formData, setFormData] = useState<Omit<Product, 'id'> & { isNewCategory?: boolean }>(product ? { ...product, id: undefined } as any : initialProductFormState);
+  const [formData, setFormData] = useState<Omit<Product, 'id'> & { isNewCategory?: boolean, categoryId?: string }>(product ? { ...product, id: undefined } as any : initialProductFormState);
   const [imagePreview, setImagePreview] = useState<string | null>(product?.imageUrl || null);
   const [includeImage, setIncludeImage] = useState<boolean>(product ? !!product.imageUrl : true);
+  const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [loadingCategory, setLoadingCategory] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
   useEffect(() => {
-    if (product && !productCategories.includes(product.category)) {
-      setFormData(prev => ({ ...prev, isNewCategory: true }));
-    } else if (!product) {
-      setFormData(prev => ({ ...prev, isNewCategory: false }));
+    async function fetchCategories() {
+      const cats = await getProductCategories();
+      setCategories(cats);
     }
-    
-    // Set includeImage based on whether product has an image
+    fetchCategories();
+  }, []);
+
+  useEffect(() => {
     if (product) {
+      setFormData(prev => ({ ...prev, isNewCategory: false }));
       setIncludeImage(!!product.imageUrl && product.imageUrl !== 'https://placehold.co/300x300.png');
     } else {
+      setFormData(prev => ({ ...prev, isNewCategory: false }));
       setIncludeImage(true);
     }
-  }, [product, productCategories]);
+  }, [product]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -197,10 +201,15 @@ function ProductForm({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!formData.categoryId) {
+      toast({ title: 'Kategori wajib dipilih', variant: 'destructive' });
+      return;
+    }
     const finalFormData = {
       ...formData,
       imageUrl: includeImage ? (imagePreview || 'https://placehold.co/300x300.png') : 'https://placehold.co/300x300.png',
-      outletId: user?.outletId
+      outletId: user?.outletId,
+      categoryId: formData.categoryId
     };
     onSave(finalFormData);
   };
@@ -272,12 +281,12 @@ function ProductForm({
           <div className="space-y-1.5">
             <Label htmlFor="category" className="text-xs sm:text-sm">Kategori</Label>
             <Select
-              value={formData.isNewCategory ? "new-category" : formData.category}
-              onValueChange={(value) => {
-                if (value === "new-category") {
-                  setFormData(prev => ({ ...prev, category: "", isNewCategory: true }));
+              value={formData.isNewCategory ? 'new-category' : formData.categoryId || ''}
+              onValueChange={async (value) => {
+                if (value === 'new-category') {
+                  setFormData(prev => ({ ...prev, isNewCategory: true }));
                 } else {
-                  setFormData(prev => ({ ...prev, category: value, isNewCategory: false }));
+                  setFormData(prev => ({ ...prev, categoryId: value, isNewCategory: false }));
                 }
               }}
             >
@@ -285,22 +294,42 @@ function ProductForm({
                 <SelectValue placeholder="Pilih Kategori" />
               </SelectTrigger>
               <SelectContent>
-                {productCategories.map(category => (
-                  <SelectItem key={category} value={category}>{category}</SelectItem>
+                {categories.map(category => (
+                  <SelectItem key={category.id} value={category.id}>{category.name}</SelectItem>
                 ))}
                 <SelectItem value="new-category">+ Tambah Kategori Baru...</SelectItem>
               </SelectContent>
             </Select>
             {formData.isNewCategory && (
-              <Input
-                id="new-category-name"
-                name="category"
-                value={formData.category}
-                onChange={handleInputChange}
-                placeholder="Masukkan nama kategori baru"
-                className="mt-2 rounded-lg px-3 py-1.5 text-xs sm:text-sm"
-                required
-              />
+              <div className="flex gap-2 mt-2">
+                <Input
+                  id="new-category-name"
+                  value={newCategoryName}
+                  onChange={e => setNewCategoryName(e.target.value)}
+                  placeholder="Masukkan nama kategori baru"
+                  className="rounded-lg px-3 py-1.5 text-xs sm:text-sm"
+                  required
+                />
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={loadingCategory || !newCategoryName}
+                  onClick={async () => {
+                    setLoadingCategory(true);
+                    try {
+                      const newCat = await addProductCategory(newCategoryName);
+                      setCategories(prev => [...prev, newCat]);
+                      setFormData(prev => ({ ...prev, categoryId: newCat.id, isNewCategory: false }));
+                      setNewCategoryName('');
+                      toast({ title: 'Kategori berhasil ditambahkan' });
+                    } catch (err) {
+                      toast({ title: 'Gagal tambah kategori', variant: 'destructive' });
+                    } finally {
+                      setLoadingCategory(false);
+                    }
+                  }}
+                >Simpan</Button>
+              </div>
             )}
           </div>
           <div className="space-y-2">
@@ -475,7 +504,7 @@ export default function ManageProductsPage() {
     }
   };
 
-  const handleSave = async (productData: Omit<Product, 'id'>) => {
+  const handleSave = async (productData: Omit<Product, 'id'> & { categoryId: string }) => {
     if (!user) {
       toast({
         variant: "destructive",
@@ -648,7 +677,7 @@ export default function ManageProductsPage() {
         {/* Pengaturan Markup Platform dalam Accordion */}
         {/* Removed Accordion as per edit hint */}
       {/* Dialog/form produk dan komponen lain tetap, hanya sesuaikan style jika perlu */}
-      {isFormOpen && <ProductForm product={editingProduct} onSave={handleSave} onCancel={() => setIsFormOpen(false)} productCategories={productCategories} user={user} />}
+      {isFormOpen && <ProductForm product={editingProduct} onSave={handleSave} onCancel={() => setIsFormOpen(false)} user={user} />}
     </div>
   );
 }
