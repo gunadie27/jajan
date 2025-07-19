@@ -281,7 +281,7 @@ function ProductForm({
           <div className="space-y-1.5">
             <Label htmlFor="category" className="text-xs sm:text-sm">Kategori</Label>
             <Select
-              value={formData.isNewCategory ? 'new-category' : formData.categoryId || ''}
+              value={formData.isNewCategory ? 'new-category' : formData.categoryId ? formData.categoryId.toString() : ''}
               onValueChange={async (value) => {
                 if (value === 'new-category') {
                   setFormData(prev => ({ ...prev, isNewCategory: true }));
@@ -295,7 +295,7 @@ function ProductForm({
               </SelectTrigger>
               <SelectContent>
                 {categories.map(category => (
-                  <SelectItem key={category.id} value={category.id}>{category.name}</SelectItem>
+                  <SelectItem key={category.id} value={category.id.toString()}>{category.name}</SelectItem>
                 ))}
                 <SelectItem value="new-category">+ Tambah Kategori Baru...</SelectItem>
               </SelectContent>
