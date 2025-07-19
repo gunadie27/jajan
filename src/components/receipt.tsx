@@ -2,8 +2,8 @@
 import type { Transaction, OrderChannel, ProductVariant } from "@/lib/types";
 import { AppLogo } from "@/components/app-logo";
 
-function formatCurrency(value: number | undefined) {
-    if (value === undefined) return '-';
+function formatCurrency(value: number | undefined | null) {
+    if (typeof value !== 'number' || isNaN(value)) return 'Rp0';
     return `Rp${value.toLocaleString('id-ID')}`;
 }
 

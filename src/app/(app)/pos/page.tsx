@@ -140,6 +140,19 @@ function WhatsAppDialog({
 }) {
     const [name, setName] = useState("");
     const [phone, setPhone] = useState("");
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState("");
+
+    useEffect(() => {
+      if (!isOpen) {
+        document.body.scrollTop = 0;
+        document.body.style.zoom = 1;
+        setName("");
+        setPhone("");
+        setError("");
+        setLoading(false);
+      }
+    }, [isOpen]);
 
     const generateReceiptText = (customerName: string) => {
         let text = `*Struk Digital - Maujajan POS*\n\n`;
@@ -160,41 +173,66 @@ function WhatsAppDialog({
     
     const handleSend = () => {
         if (!transaction) return;
+        if (!phone || phone.length < 8) {
+          setError("Nomor WhatsApp wajib diisi dan minimal 8 digit.");
+          return;
+        }
+        setLoading(true);
+        setError("");
         onConfirm(name, phone);
         const receiptText = generateReceiptText(name);
         const whatsappUrl = `https://wa.me/${phone.startsWith('0') ? '62' + phone.substring(1) : phone}?text=${receiptText}`;
         window.open(whatsappUrl, '_blank');
-        onClose();
+        setTimeout(() => {
+          setLoading(false);
+          onClose();
+        }, 800); // beri jeda agar UX smooth
     }
 
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
-            <DialogContent>
+            <DialogContent
+              className="w-full max-w-xs sm:max-w-sm p-4 sm:p-6 rounded-2xl border-0 shadow-xl bg-gradient-to-br from-blue-50 via-white to-purple-100 max-h-[90vh] overflow-y-auto"
+              style={{ boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.18)' }}
+            >
                 <DialogHeader>
-                    <DialogTitle>Kirim Struk & Simpan Kontak</DialogTitle>
-                    <DialogDescription>
-                        Masukkan nomor WhatsApp untuk mengirim struk. Nama bersifat opsional.
-                    </DialogDescription>
+                    <DialogTitle className="text-center font-headline text-lg sm:text-xl font-bold text-primary drop-shadow-sm">Kirim Struk WhatsApp</DialogTitle>
+                    <DialogDescription className="text-center text-xs sm:text-sm text-muted-foreground mb-2">Masukkan nomor WhatsApp untuk mengirim struk digital. Nama opsional.</DialogDescription>
                 </DialogHeader>
                 {transaction ? (
-                  <div className="space-y-4 py-4">
+                  <div className="space-y-4 py-2">
                       <div className="space-y-2">
-                          <Label htmlFor="customer-name">Nama Pelanggan (Opsional)</Label>
-                          <Input id="customer-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Masukkan nama pelanggan" />
+                          <Label htmlFor="customer-name" className="text-xs">Nama Pelanggan (Opsional)</Label>
+                          <Input id="customer-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Masukkan nama pelanggan" style={{ fontSize: 16, height: 44 }} className="rounded-lg px-3 py-2 text-sm" />
                       </div>
-                       <div className="space-y-2">
-                          <Label htmlFor="customer-phone">Nomor WhatsApp</Label>
-                          <Input id="customer-phone" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="e.g. 081234567890" required />
+                      <div className="space-y-2">
+                          <Label htmlFor="customer-phone" className="text-xs">Nomor WhatsApp <span className="text-destructive">*</span></Label>
+                          <div className="relative">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-green-500">
+                              <svg width="22" height="22" viewBox="0 0 32 32" fill="currentColor"><path d="M16 3C9.373 3 4 8.373 4 15c0 2.637.86 5.08 2.48 7.13L4.09 28.36a1 1 0 0 0 1.25 1.25l6.23-2.39A12.93 12.93 0 0 0 16 27c6.627 0 12-5.373 12-12S22.627 3 16 3zm0 22c-1.77 0-3.5-.36-5.1-1.07a1 1 0 0 0-.77-.04l-4.47 1.72 1.72-4.47a1 1 0 0 0-.04-.77A10.97 10.97 0 0 1 6 15c0-5.514 4.486-10 10-10s10 4.486 10 10-4.486 10-10 10zm5.29-7.29-2.5-2.5a1 1 0 0 0-1.42 0l-1.29 1.3a7.97 7.97 0 0 1-3.29-3.29l1.3-1.29a1 1 0 0 0 0-1.42l-2.5-2.5a1 1 0 0 0-1.42 0c-.36.36-.93 1.01-1.01 1.7-.13 1.13.23 2.5 1.09 4.01.85 1.5 2.13 3.13 4.01 4.01 1.51.86 2.88 1.22 4.01 1.09.69-.08 1.34-.65 1.7-1.01a1 1 0 0 0 0-1.42z"/></svg>
+                            </span>
+                            <Input id="customer-phone" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="e.g. 081234567890" required style={{ fontSize: 16, height: 44, paddingLeft: 40 }} className="rounded-lg px-3 py-2 text-sm pl-10" inputMode="numeric" />
+                          </div>
+                          {error && <div className="text-xs text-destructive mt-1">{error}</div>}
                       </div>
                   </div>
                 ) : (
                   <div className="text-center text-muted-foreground py-8">Tidak ada transaksi.</div>
                 )}
-                <DialogFooter>
-                    <Button variant="secondary" onClick={onClose}>Batal</Button>
-                    <Button onClick={handleSend} disabled={!phone || !transaction}>
-                        <Send className="mr-2 h-4 w-4" />
-                        Kirim & Simpan
+                <DialogFooter className="flex flex-col gap-2 pt-2">
+                    <Button variant="secondary" onClick={onClose} className="w-full rounded-lg text-sm py-2">Batal</Button>
+                    <Button onClick={handleSend} disabled={!phone || !transaction || loading} className="w-full rounded-lg text-sm py-2 bg-green-600 hover:bg-green-700 text-white font-bold flex items-center justify-center gap-2">
+                        {loading ? (
+                            <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                        ) : (
+                            <>
+                                <Send className="mr-2 h-4 w-4" />
+                                Kirim & Simpan
+                            </>
+                        )}
                     </Button>
                 </DialogFooter>
             </DialogContent>
@@ -219,30 +257,35 @@ function PaymentSuccessDialog({
 
     return (
         <Dialog open={isOpen} onOpenChange={onOpenChange}>
-            <DialogContent>
+            <DialogContent
+              className="w-full max-w-xs sm:max-w-sm p-4 sm:p-6 rounded-2xl border-0 shadow-xl bg-gradient-to-br from-green-50 via-white to-blue-100 max-h-[90vh] overflow-y-auto"
+              style={{ boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.18)' }}
+            >
                 <DialogHeader>
-                    <DialogTitle className="text-center font-headline">Transaksi Berhasil!</DialogTitle>
-                    <DialogDescription className="text-center">
-                        Transaksi telah berhasil dicatat. Anda dapat mencetak struk atau mengirimkannya via WhatsApp.
+                    <div className="flex flex-col items-center gap-2 mb-2">
+                        <CheckCircle className="h-16 w-16 text-green-500 mb-1" />
+                        <DialogTitle className="text-center font-headline text-xl sm:text-2xl font-bold text-green-700 drop-shadow-sm">Transaksi Berhasil!</DialogTitle>
+                    </div>
+                    <DialogDescription className="text-center text-xs sm:text-sm text-muted-foreground mb-2">
+                        Transaksi berhasil dicatat.
                     </DialogDescription>
                 </DialogHeader>
-                <div className="flex flex-col items-center text-center gap-4 py-4">
-                    <CheckCircle className="h-16 w-16 text-green-500" />
-                    <p>
-                        Transaksi sebesar <strong>Rp{lastTransaction.total.toLocaleString('id-ID')}</strong> telah berhasil dicatat.
-                    </p>
-                    <div className="w-full space-y-2">
-                        <Button onClick={onSendWhatsApp} className="w-full bg-green-600 hover:bg-green-700">
-                           <Send className="mr-2 h-4 w-4" /> Kirim Struk via WhatsApp
+                <div className="flex flex-col items-center text-center gap-2 py-2">
+                    <div className="text-2xl sm:text-3xl font-bold text-green-600 mb-1">Rp{(lastTransaction.total ?? 0).toLocaleString('id-ID')}</div>
+                    <div className="text-xs text-muted-foreground mb-2">Terima kasih telah bertransaksi!</div>
+                    <div className="w-full space-y-2 mt-2">
+                        <Button onClick={onSendWhatsApp} className="w-full bg-green-600 hover:bg-green-700 text-white font-bold rounded-lg text-sm py-3 flex items-center justify-center gap-2">
+                           <svg width='22' height='22' viewBox='0 0 32 32' fill='currentColor' className='mr-2'><path d="M16 3C9.373 3 4 8.373 4 15c0 2.637.86 5.08 2.48 7.13L4.09 28.36a1 1 0 0 0 1.25 1.25l6.23-2.39A12.93 12.93 0 0 0 16 27c6.627 0 12-5.373 12-12S22.627 3 16 3zm0 22c-1.77 0-3.5-.36-5.1-1.07a1 1 0 0 0-.77-.04l-4.47 1.72 1.72-4.47a1 1 0 0 0-.04-.77A10.97 10.97 0 0 1 6 15c0-5.514 4.486-10 10-10s10 4.486 10 10-4.486 10-10 10zm5.29-7.29-2.5-2.5a1 1 0 0 0-1.42 0l-1.29 1.3a7.97 7.97 0 0 1-3.29-3.29l1.3-1.29a1 1 0 0 0 0-1.42l-2.5-2.5a1 1 0 0 0-1.42 0c-.36.36-.93 1.01-1.01 1.7-.13 1.13.23 2.5 1.09 4.01.85 1.5 2.13 3.13 4.01 4.01 1.51.86 2.88 1.22 4.01 1.09.69-.08 1.34-.65 1.7-1.01a1 1 0 0 0 0-1.42z"/></svg>
+                           Kirim Struk via WhatsApp
                         </Button>
-                        <Button onClick={onPrint} className="w-full" variant="outline">
-                            <Printer className="mr-2 h-4 w-4" />
+                        <Button onClick={onPrint} className="w-full rounded-lg text-sm py-3 flex items-center justify-center gap-2" variant="outline">
+                            <Printer className="mr-2 h-5 w-5" />
                             Cetak Struk Fisik
                         </Button>
                     </div>
                 </div>
-                <DialogFooter>
-                     <Button variant="secondary" className="w-full" onClick={() => onOpenChange(false)}>Tutup</Button>
+                <DialogFooter className="pt-2">
+                     <Button variant="secondary" className="w-full rounded-lg text-sm py-2 hover:bg-primary/10 transition-colors" onClick={() => onOpenChange(false)}>Tutup</Button>
                 </DialogFooter>
             </DialogContent>
         </Dialog>
@@ -281,6 +324,7 @@ export default function POSPage() {
   const { user } = useAuth();
   const router = useRouter();
   // const isMobile = useIsMobile(); // (opsional, jika ingin dipakai untuk deteksi mobile di komponen)
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
 
   const handleCashReceivedChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const rawValue = e.target.value.replace(/[^\d]/g, ''); // Remove non-digits
@@ -366,6 +410,7 @@ export default function POSPage() {
       });
       return;
     }
+    setIsProcessingPayment(true);
 
     const finalTotal = total;
 
@@ -401,6 +446,7 @@ export default function POSPage() {
     }
 
     if (!isStockAvailable) {
+        setIsProcessingPayment(false);
         return; 
     }
     
@@ -426,6 +472,7 @@ export default function POSPage() {
       setPaymentSuccessDialogOpen(true);
       setOrderChannel('store');
       setPaymentMethod('cash');
+      setIsProcessingPayment(false);
     } catch (error) {
       console.error('Error processing payment:', error);
       toast({
@@ -433,6 +480,7 @@ export default function POSPage() {
         title: "Error",
         description: "Gagal memproses pembayaran"
       });
+      setIsProcessingPayment(false);
     }
   };
 
@@ -784,7 +832,7 @@ export default function POSPage() {
       {/* Dialog Pembayaran */}
       <Dialog open={paymentDialogOpen} onOpenChange={setPaymentDialogOpen}>
         <DialogContent
-          className="max-w-[95vw] sm:max-w-[360px] w-full p-3 sm:p-5 rounded-2xl border-0 shadow-xl bg-gradient-to-br from-blue-50 via-white to-purple-100 !overflow-visible max-h-[95vh] overflow-y-auto"
+          className="w-full max-w-xs sm:max-w-sm p-3 sm:p-5 rounded-2xl border-0 shadow-xl bg-gradient-to-br from-blue-50 via-white to-purple-100 max-h-[90vh] overflow-y-auto"
           style={{ boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.18)' }}
         >
           <DialogHeader>
@@ -849,6 +897,7 @@ export default function POSPage() {
                   onChange={handleCashReceivedChange}
                   placeholder="Masukkan nominal uang diterima"
                   className="rounded-lg px-3 py-1.5 text-xs sm:text-sm"
+                  style={{ fontSize: 16 }}
                 />
                 <div className="flex justify-between text-xs sm:text-sm mt-1">
                   <span>Kembalian</span>
@@ -867,10 +916,20 @@ export default function POSPage() {
             <Button variant="secondary" onClick={() => setPaymentDialogOpen(false)} className="rounded-lg px-4 text-xs sm:text-sm">Batal</Button>
             <Button
               onClick={() => handlePayment()}
-              className="rounded-lg px-4 text-xs sm:text-sm bg-gradient-to-r from-primary to-purple-500 shadow-md"
-              disabled={paymentMethod === 'cash' && cashReceived < totalForDialog}
+              className="rounded-lg px-4 text-xs sm:text-sm bg-gradient-to-r from-primary to-purple-500 shadow-md flex items-center justify-center gap-2"
+              disabled={paymentMethod === 'cash' && cashReceived < totalForDialog || isProcessingPayment}
             >
-              Konfirmasi & Bayar
+              {isProcessingPayment ? (
+                <>
+                  <svg className="animate-spin h-5 w-5 mr-2 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Memproses pembayaran...
+                </>
+              ) : (
+                'Konfirmasi & Bayar'
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
