@@ -86,22 +86,23 @@ export async function addProduct(productData: Omit<Product, 'id'>, currentUser: 
         throw new Error('Forbidden: Cashier can only add product for their own outlet');
     }
     const { name, category, imageUrl, variants, outletId } = productData;
+    const data: any = {
+        name,
+        category,
+        imageUrl,
+        variants: {
+            create: variants.map(v => ({
+                name: v.name,
+                price: v.price,
+                cogs: v.cogs,
+                stock: v.stock,
+                trackStock: v.trackStock
+            }))
+        }
+    };
+    if (outletId) data.outletId = outletId;
     const newProduct = await prisma.product.create({
-        data: {
-            name,
-            category,
-            imageUrl,
-            outletId,
-            variants: {
-                create: variants.map(v => ({
-                    name: v.name,
-                    price: v.price,
-                    cogs: v.cogs,
-                    stock: v.stock,
-                    trackStock: v.trackStock
-                }))
-            }
-        },
+        data,
         include: {
             variants: true
         }
@@ -211,8 +212,30 @@ export async function addTransaction(transactionData: Omit<Transaction, 'id'>, c
     const outletRecord = await prisma.outlet.findUnique({ where: { name: outlet } });
     if (!outletRecord) throw new Error("Outlet not found");
 
+    // Generate kode outlet otomatis dari nama outlet (ambil huruf pertama tiap kata, max 4 huruf, uppercase)
+    const outletCode = outletRecord.name.split(' ').map(k => k[0]).join('').toUpperCase().slice(0, 4);
+    // Tanggal transaksi (pakai date dari transaksi, fallback ke now)
+    const trxDate = date ? new Date(date) : new Date();
+    const yy = String(trxDate.getFullYear()).slice(-2);
+    const mm = String(trxDate.getMonth() + 1).padStart(2, '0');
+    const dd = String(trxDate.getDate()).padStart(2, '0');
+    const dateStr = `${yy}${mm}${dd}`;
+    // Hitung nomor urut transaksi pada hari itu untuk outlet tsb
+    const trxCount = await prisma.transaction.count({
+      where: {
+        outletId: outletRecord.id,
+        date: {
+          gte: new Date(`${trxDate.getFullYear()}-${mm}-${dd}T00:00:00.000Z`),
+          lt: new Date(`${trxDate.getFullYear()}-${mm}-${dd}T23:59:59.999Z`)
+        }
+      }
+    });
+    const urut = String(trxCount + 1).padStart(5, '0');
+    const transactionNumber = `TRX-${dateStr}-${outletCode}-${urut}`;
+
     const newTransaction = await prisma.transaction.create({
         data: {
+            transactionNumber,
             total,
             date,
             outletName: outlet,
@@ -232,7 +255,7 @@ export async function addTransaction(transactionData: Omit<Transaction, 'id'>, c
                     variantId: item.variant.id,
                 }))
             }
-        },
+        } as any, // <-- tambahkan as any
         include: {
             items: { include: { product: true, variant: true } }
         }
@@ -243,7 +266,7 @@ export async function addTransaction(transactionData: Omit<Transaction, 'id'>, c
 export async function updateTransaction(transactionId: string, updateData: Partial<Omit<Transaction, 'id'>>): Promise<Transaction> {
     const updatedTransaction = await prisma.transaction.update({
         where: { id: transactionId },
-        data: updateData,
+        data: updateData as any,
         include: {
             items: { include: { product: true, variant: true } }
         }
@@ -417,22 +440,15 @@ const customerSchema = z.object({
 });
 
 export async function addCustomer(customerData: Omit<Customer, 'id'>, currentUser: User): Promise<Customer> {
-    customerSchema.parse(customerData);
-    // Hanya owner dan kasir yang boleh tambah customer
-    if (currentUser.role !== 'owner' && currentUser.role !== 'cashier') {
-        throw new Error('Forbidden: Only owner or cashier can add customer');
-    }
-    // Jika kasir, hanya boleh untuk outlet sendiri
-    if (currentUser.role === 'cashier' && customerData.outletId !== currentUser.outletId) {
-        throw new Error('Forbidden: Cashier can only add customer for their own outlet');
-    }
-    try {
-        const newCustomer = await prisma.customer.create({ data: customerData });
-        return newCustomer as any;
-    } catch (error) {
-        console.error("Error adding customer:", error);
-        throw error;
-    }
+    if (!customerData.outletId) throw new Error('outletId is required');
+    const { outletId, ...rest } = customerData;
+    const newCustomer = await prisma.customer.create({
+        data: {
+            ...rest,
+            outlet: { connect: { id: outletId } }
+        },
+    });
+    return newCustomer as any;
 }
 
 export async function updateCustomer(customerId: string, customerData: Partial<Omit<Customer, 'id'>>): Promise<Customer> {

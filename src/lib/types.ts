@@ -36,12 +36,14 @@ export type Customer = {
     lastTransactionDate: Date;
     totalSpent: number;
     transactionIds: string[];
+    outletId: string;
 }
 
 export type PaymentMethod = 'cash' | 'qris' | 'platform_balance';
 
 export type Transaction = {
   id: string;
+  transactionNumber?: string;
   items: OrderItem[];
   total: number;
   date: Date;
@@ -101,7 +103,5 @@ export type CashierSession = {
 }
 
 export type PlatformSettings = {
-  [key in OrderChannel]?: {
-    markup: number;
-  };
+  [key: string]: { markup: number };
 };

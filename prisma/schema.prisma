@@ -11,6 +11,7 @@ datasource db {
 model Outlet {
   id              String           @id @default(uuid())
   name            String           @unique
+  code            String?          @unique // kode outlet singkat, otomatis dari nama
   address         String
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
@@ -66,6 +67,7 @@ model ProductVariant {
 
 model Transaction {
   id               String          @id @default(uuid())
+  transactionNumber String?         @unique // nomor transaksi singkat
   date             DateTime        @default(now())
   total            Float
   outletName       String

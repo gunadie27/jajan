@@ -8,7 +8,7 @@ function formatCurrency(value: number | undefined | null) {
 }
 
 export function Receipt({ transaction }: { transaction: Transaction }) {
-  const { id, date, items, total, outlet, paymentMethod, orderChannel, cashReceived, change, customerName } = transaction;
+  const { id, transactionNumber, date, items, total, outlet, paymentMethod, orderChannel, cashReceived, change, customerName } = transaction;
 
   return (
     <div className="printable-area bg-white text-black font-mono p-4 max-w-xs mx-auto">
@@ -16,7 +16,7 @@ export function Receipt({ transaction }: { transaction: Transaction }) {
             <h1 className="text-xl font-bold">Maujajan POS</h1>
             <p className="text-xs">{outlet}</p>
             <p className="text-xs">{new Intl.DateTimeFormat('id-ID', { dateStyle: 'long', timeStyle: 'short' }).format(date)}</p>
-            <p className="text-xs">ID: {id}</p>
+            <p className="text-xs">ID: {transactionNumber || id}</p>
             {customerName && <p className="text-xs font-semibold">Pelanggan: {customerName}</p>}
         </div>
 
