@@ -67,6 +67,7 @@ export async function getProducts(): Promise<Product[]> {
     const products = await prisma.product.findMany({
         include: {
             variants: true,
+            category: true, // Tambahkan relasi kategori
         },
         orderBy: {
             createdAt: 'asc'
@@ -80,14 +81,14 @@ export async function getProductCategories(): Promise<{ id: string; name: string
     select: { id: true, name: true },
     orderBy: { name: 'asc' }
   });
-  return categories;
+  return categories.map(cat => ({ id: String(cat.id), name: cat.name }));
 }
 
 export async function addProductCategory(name: string): Promise<{ id: string; name: string }> {
   const newCategory = await prisma.productCategory.create({
     data: { name }
   });
-  return newCategory;
+  return { id: String(newCategory.id), name: newCategory.name };
 }
 
 export async function addProduct(productData: Omit<Product, 'id'> & { categoryId: string }, currentUser: User): Promise<Product> {
@@ -99,12 +100,15 @@ export async function addProduct(productData: Omit<Product, 'id'> & { categoryId
         throw new Error('Forbidden: Cashier can only add product for their own outlet');
     }
     const { name, imageUrl, variants, outletId, categoryId } = productData;
-    console.log('DEBUG addProduct:', { outletId, categoryId, name });
+    const categoryIdNum = Number(categoryId);
+    if (!categoryId || isNaN(categoryIdNum)) {
+        throw new Error('Kategori produk tidak valid. Silakan pilih ulang kategori.');
+    }
     const data: any = {
         name,
         imageUrl,
         outletId,
-        categoryId: Number(categoryId),
+        categoryId: categoryIdNum,
         variants: {
             create: variants.map(v => ({
                 name: v.name,
@@ -138,7 +142,7 @@ export async function updateProduct(productId: string, productData: Omit<Product
             where: { id: productId },
             data: {
                 name,
-                category,
+                categoryId: Number(category),
                 imageUrl,
                 variants: {
                     create: variants.map(v => ({
@@ -150,7 +154,7 @@ export async function updateProduct(productId: string, productData: Omit<Product
                     }))
                 }
             },
-            include: { variants: true }
+            include: { variants: true, category: true }
         });
     });
 

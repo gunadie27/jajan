@@ -435,7 +435,7 @@ export default function ManageProductsPage() {
         setOrderChannels(channelsData);
 
         // Extract unique categories from fetched products
-        const uniqueCategories = Array.from(new Set(productsData.map(p => p.category)));
+        const uniqueCategories = Array.from(new Set(productsData.map(p => typeof p.category === 'object' && p.category !== null ? p.category.name : p.category)));
         setProductCategories(uniqueCategories.sort());
 
       } catch (error) {
@@ -619,8 +619,8 @@ export default function ManageProductsPage() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Semua Kategori</SelectItem>
-            {productCategories.map(category => (
-              <SelectItem key={category} value={category}>{category}</SelectItem>
+            {productCategories.map((category, idx) => (
+              <SelectItem key={category + idx} value={category}>{category}</SelectItem>
             ))}
           </SelectContent>
         </Select>
