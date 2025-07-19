@@ -34,6 +34,7 @@ import { MoreHorizontal, PlusCircle, Trash2, Upload, ShoppingBag, Infinity, Perc
 import { Badge } from "@/components/ui/badge";
 import type { Product, PlatformSettings, OrderChannel } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
 import { getProducts, addProduct, updateProduct, deleteProduct, getPlatformSettings, updatePlatformSettings, getOrderChannels } from "@/services/data-service";
 import { cn } from "@/lib/utils";
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "@/components/ui/accordion";
@@ -50,14 +51,17 @@ function ProductForm({
   onSave,
   onCancel,
   productCategories,
+  user,
 }: {
   product: Product | null;
   onSave: (product: Omit<Product, 'id'>) => void;
   onCancel: () => void;
   productCategories: string[];
+  user: any;
 }) {
   const [formData, setFormData] = useState<Omit<Product, 'id'> & { isNewCategory?: boolean }>(product ? { ...product, id: undefined } as any : initialProductFormState);
   const [imagePreview, setImagePreview] = useState<string | null>(product?.imageUrl || null);
+  const [includeImage, setIncludeImage] = useState<boolean>(product ? !!product.imageUrl : true);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
@@ -66,6 +70,13 @@ function ProductForm({
       setFormData(prev => ({ ...prev, isNewCategory: true }));
     } else if (!product) {
       setFormData(prev => ({ ...prev, isNewCategory: false }));
+    }
+    
+    // Set includeImage based on whether product has an image
+    if (product) {
+      setIncludeImage(!!product.imageUrl && product.imageUrl !== 'https://placehold.co/300x300.png');
+    } else {
+      setIncludeImage(true);
     }
   }, [product, productCategories]);
 
@@ -186,7 +197,12 @@ function ProductForm({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSave(formData);
+    const finalFormData = {
+      ...formData,
+      imageUrl: includeImage ? (imagePreview || 'https://placehold.co/300x300.png') : 'https://placehold.co/300x300.png',
+      outletId: user?.outletId
+    };
+    onSave(finalFormData);
   };
 
   return (
@@ -205,28 +221,49 @@ function ProductForm({
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-3 py-1 text-xs sm:text-sm pb-32">
           <div className="space-y-1.5">
-            <Label htmlFor="product-image" className="text-xs sm:text-sm">Gambar Produk</Label>
-            <div 
-              className="w-full h-36 sm:h-44 border-2 border-dashed rounded-md flex items-center justify-center bg-muted/50 cursor-pointer overflow-hidden"
-              onClick={triggerFileUpload}
-            >
-              {imagePreview ? (
-                 <img src={imagePreview ?? ''} alt="Product preview" width={192} height={192} style={{objectFit:'cover',height:'100%',width:'100%',borderRadius:8}} />
-              ) : (
-                <div className="text-center text-muted-foreground">
-                  <Upload className="mx-auto h-7 w-7" />
-                  <p className="text-xs">Klik untuk mengunggah gambar</p>
-                </div>
-              )}
+            <div className="flex items-center justify-between">
+              <Label htmlFor="product-image" className="text-xs sm:text-sm">Gambar Produk</Label>
+              <div className="flex items-center space-x-2">
+                <Label htmlFor="include-image" className="text-xs">Sertakan Gambar</Label>
+                <Switch 
+                  id="include-image" 
+                  checked={includeImage} 
+                  onCheckedChange={setIncludeImage}
+                />
+              </div>
             </div>
-            <Input 
-              id="product-image" 
-              type="file" 
-              className="hidden" 
-              ref={fileInputRef} 
-              onChange={handleImageUpload}
-              accept="image/*"
-            />
+            {includeImage ? (
+              <>
+                <div 
+                  className="w-full h-36 sm:h-44 border-2 border-dashed rounded-md flex items-center justify-center bg-muted/50 cursor-pointer overflow-hidden"
+                  onClick={triggerFileUpload}
+                >
+                  {imagePreview ? (
+                     <img src={imagePreview ?? ''} alt="Product preview" width={192} height={192} style={{objectFit:'cover',height:'100%',width:'100%',borderRadius:8}} />
+                  ) : (
+                    <div className="text-center text-muted-foreground">
+                      <Upload className="mx-auto h-7 w-7" />
+                      <p className="text-xs">Klik untuk mengunggah gambar</p>
+                    </div>
+                  )}
+                </div>
+                <Input 
+                  id="product-image" 
+                  type="file" 
+                  className="hidden" 
+                  ref={fileInputRef} 
+                  onChange={handleImageUpload}
+                  accept="image/*"
+                />
+              </>
+            ) : (
+              <div className="w-full h-36 sm:h-44 border-2 border-dashed rounded-md flex items-center justify-center bg-muted/30">
+                <div className="text-center text-muted-foreground">
+                  <ShoppingBag className="mx-auto h-7 w-7" />
+                  <p className="text-xs">Produk tanpa gambar</p>
+                </div>
+              </div>
+            )}
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="name" className="text-xs sm:text-sm">Nama Produk</Label>
@@ -328,6 +365,7 @@ export default function ManageProductsPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("all");
   const { toast } = useToast();
+  const { user } = useAuth();
 
   useEffect(() => {
     async function fetchData() {
@@ -412,6 +450,15 @@ export default function ManageProductsPage() {
   };
 
   const handleSave = async (productData: Omit<Product, 'id'>) => {
+    if (!user) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "User tidak ditemukan"
+      });
+      return;
+    }
+
     try {
       if (editingProduct) {
         const updated = await updateProduct(editingProduct.id, productData);
@@ -421,7 +468,7 @@ export default function ManageProductsPage() {
           description: "Produk berhasil diperbarui"
         });
       } else {
-        const newProduct = await addProduct(productData);
+        const newProduct = await addProduct(productData, user);
         setProducts([...products, newProduct]);
         toast({
           title: "Sukses",
@@ -575,7 +622,7 @@ export default function ManageProductsPage() {
         {/* Pengaturan Markup Platform dalam Accordion */}
         {/* Removed Accordion as per edit hint */}
       {/* Dialog/form produk dan komponen lain tetap, hanya sesuaikan style jika perlu */}
-      {isFormOpen && <ProductForm product={editingProduct} onSave={handleSave} onCancel={() => setIsFormOpen(false)} productCategories={productCategories} />}
+      {isFormOpen && <ProductForm product={editingProduct} onSave={handleSave} onCancel={() => setIsFormOpen(false)} productCategories={productCategories} user={user} />}
     </div>
   );
 }

@@ -17,6 +17,7 @@ export type Product = {
   category: string;
   imageUrl: string;
   variants: ProductVariant[];
+  outletId?: string;
   "data-ai-hint"?: string;
 };
 
