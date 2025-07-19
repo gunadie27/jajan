@@ -27,15 +27,27 @@ import * as dataService from "@/services/data-service"
 import { useToast } from "@/hooks/use-toast"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
+import { useCustomerStore } from '@/store/customerStore';
 
 export default function ManageCustomersPage() {
-  const [customers, setCustomers] = useState<Customer[]>([]);
+  const customers = useCustomerStore(state => state.customers);
+  const fetchCustomers = useCustomerStore(state => state.fetchCustomers);
+  const updateCustomer = useCustomerStore(state => state.updateCustomer);
   const [allTransactions, setAllTransactions] = useState<Transaction[]>([]);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [isFormOpen, setIsFormOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState<string>("");
+  const [isFormOpen, setIsFormOpen] = useState<boolean>(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const { toast } = useToast();
   const router = useRouter();
+
+  useEffect(() => {
+    fetchCustomers();
+    async function fetchTx() {
+      const tx = await dataService.getTransactions();
+      setAllTransactions(tx);
+    }
+    fetchTx();
+  }, [router]);
 
   const handleEditCustomer = (customer: Customer) => {
     setEditingCustomer(customer);
@@ -45,15 +57,12 @@ export default function ManageCustomersPage() {
   const handleSaveCustomer = async (customerData: Omit<Customer, 'id'>) => {
     try {
       if (editingCustomer) {
-        const updated = await dataService.updateCustomer(editingCustomer.id, customerData);
-        setCustomers(prev => prev.map(c => c.id === updated.id ? updated : c));
+        await updateCustomer(editingCustomer.id, customerData);
         toast({
           title: "Pelanggan Diperbarui",
           description: "Data pelanggan berhasil diperbarui.",
         });
       } else {
-        // This case should ideally not happen if the form is only for editing existing customers
-        // If adding new customers is also intended, add addCustomer logic here
         toast({
           variant: "destructive",
           title: "Gagal Menyimpan Pelanggan",
@@ -77,7 +86,7 @@ export default function ManageCustomersPage() {
   const handleDeleteCustomer = async (customerId: string) => {
     try {
       await dataService.deleteCustomer(customerId);
-      setCustomers(prev => prev.filter(c => c.id !== customerId));
+      await fetchCustomers();
       toast({
         title: "Pelanggan Dihapus",
         description: "Data pelanggan berhasil dihapus.",
@@ -94,28 +103,16 @@ export default function ManageCustomersPage() {
     }
   };
 
-  useEffect(() => {
-    async function fetchData() {
-        const [fetchedCustomers, fetchedTransactions] = await Promise.all([
-            dataService.getCustomers(),
-            dataService.getTransactions()
-        ]);
-        setCustomers(fetchedCustomers);
-        setAllTransactions(fetchedTransactions);
-    }
-    fetchData();
-  }, [router]);
-
   const filteredCustomers = useMemo(() => {
     return customers
-      .filter((customer) => {
+      .filter((customer: Customer) => {
         if (!searchTerm) return true;
         const lowercasedTerm = searchTerm.toLowerCase();
         const matchesName = customer.name.toLowerCase().includes(lowercasedTerm);
         const matchesPhone = customer.phoneNumber.includes(lowercasedTerm);
         return matchesName || matchesPhone;
       })
-      .sort((a, b) => new Date(b.lastTransactionDate).getTime() - new Date(a.lastTransactionDate).getTime());
+      .sort((a: Customer, b: Customer) => new Date(b.lastTransactionDate).getTime() - new Date(a.lastTransactionDate).getTime());
   }, [customers, searchTerm]);
 
   const getCustomerStats = (customer: Customer) => {
@@ -160,7 +157,7 @@ export default function ManageCustomersPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredCustomers.map((customer, idx) => {
+                {filteredCustomers.map((customer: Customer, idx: number) => {
                   const stats = getCustomerStats(customer);
                   return (
                     <TableRow key={customer.id} className={((idx % 2 === 0) ? "bg-white" : "bg-[#F5F8FF]") + " hover:bg-primary/5 transition-colors"}>

@@ -37,6 +37,7 @@ import {
 } from "@/services/data-service";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { useCustomerStore } from '@/store/customerStore';
 
 
 function getVariantPriceForChannel(variant: ProductVariant, channel: OrderChannel, markup: number): number {
@@ -308,7 +309,6 @@ const paymentMethodOptions = {
 export default function POSPage() {
   const [order, setOrder] = useState<OrderItem[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
-  const [customers, setCustomers] = useState<Customer[]>([]);
   const [platformSettings, setPlatformSettings] = useState<PlatformSettings>({});
   const [outlets, setOutlets] = useState<Outlet[]>([]);
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
@@ -326,6 +326,13 @@ export default function POSPage() {
   // const isMobile = useIsMobile(); // (opsional, jika ingin dipakai untuk deteksi mobile di komponen)
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
 
+  // Fix: Use correct property names from CustomerStore
+  const customerStore = useCustomerStore();
+  const customers = customerStore.customers as Customer[];
+  const fetchCustomers = customerStore.fetchCustomers;
+  const addCustomer = customerStore.addCustomer;
+  const updateCustomer = customerStore.updateCustomer;
+
   const handleCashReceivedChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const rawValue = e.target.value.replace(/[^\d]/g, ''); // Remove non-digits
     const numValue = Number(rawValue);
@@ -342,7 +349,6 @@ export default function POSPage() {
             getOutlets()
         ]);
         setProducts(fetchedProducts);
-        setCustomers(fetchedCustomers);
         setPlatformSettings(fetchedSettings);
         setOutlets(fetchedOutlets);
     }
@@ -506,12 +512,12 @@ export default function POSPage() {
           const updatedCustomerData: Partial<Omit<Customer, 'id'>> = {
               lastTransactionDate: new Date(),
               totalSpent: existingCustomer.totalSpent + (lastTransaction?.total || 0),
-              transactionIds: [...existingCustomer.transactionIds, lastTransaction.id],
+              transactionIds: [...existingCustomer.transactionIds, String(lastTransaction.id)],
           };
           console.log("Data to update customer with:", updatedCustomerData);
           const updatedCustomer = await updateCustomer(existingCustomer.id, updatedCustomerData);
           console.log("Updated customer from DB:", updatedCustomer);
-          setCustomers(prev => prev.map(c => c.id === updatedCustomer.id ? updatedCustomer : c));
+          await fetchCustomers(); // Refresh global state
           customerId = updatedCustomer.id;
           router.refresh();
       } else {
@@ -521,10 +527,11 @@ export default function POSPage() {
               firstTransactionDate: new Date(),
               lastTransactionDate: new Date(),
               totalSpent: lastTransaction?.total || 0,
-              transactionIds: lastTransaction ? [lastTransaction.id] : [],
+              transactionIds: lastTransaction ? [String(lastTransaction.id)] : [],
+              outletId: user?.outletId || "", // Pastikan outletId diisi
           };
           const newCustomer = await addCustomer(newCustomerData, user);
-          setCustomers(prev => [...prev, newCustomer]);
+          await fetchCustomers(); // Refresh global state
           customerId = newCustomer.id;
           router.refresh();
       }
