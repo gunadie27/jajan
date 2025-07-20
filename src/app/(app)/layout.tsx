@@ -10,6 +10,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Sidebar, SidebarHeader, SidebarContent, SidebarFooter, SidebarNav, SidebarNavItem } from "@/components/ui/sidebar";
 import { useAuth } from "@/hooks/use-auth";
+import { useCashierSession } from "@/hooks/use-cashier-session";
 import { AppLogo } from "@/components/app-logo";
 import { ExpenseDialog } from "@/components/expense-dialog";
 import { PanelLeft, LayoutGrid, Wallet, AreaChart, ShoppingBag, Users, Building, LogOut, List, History, TrendingDown, Contact, Box, BarChart3, Settings } from "lucide-react";
@@ -61,16 +62,35 @@ function LogoLink() {
 function MainNav({ userRole, closeSheet }: { userRole: string, closeSheet?: () => void }) {
     const pathname = usePathname();
     const [isExpenseDialogOpen, setIsExpenseDialogOpen] = React.useState(false);
+    const { hasActiveSession, isLoading: sessionLoading } = useCashierSession();
 
     const handleOpenExpenseDialog = (e: React.MouseEvent) => {
         e.preventDefault();
+        
+        // Jika kasir dan tidak ada sesi aktif, tampilkan warning
+        if (userRole === 'cashier' && !hasActiveSession) {
+            alert('Anda harus membuka sesi kasir terlebih dahulu sebelum dapat input pengeluaran.');
+            return;
+        }
+        
         setIsExpenseDialogOpen(true);
-        // closeSheet?.(); // Dihapus agar modal tidak langsung hilang di mobile
+    }
+
+    const handlePOSClick = (e: React.MouseEvent) => {
+        // Jika kasir dan tidak ada sesi aktif, cegah akses
+        if (userRole === 'cashier' && !hasActiveSession) {
+            e.preventDefault();
+            alert('Anda harus membuka sesi kasir terlebih dahulu sebelum dapat melakukan transaksi.');
+            return;
+        }
     }
 
     const isActive = (path: string) => pathname.startsWith(path);
     const isOwner = userRole === 'owner';
     const isCashier = userRole === 'cashier';
+
+    // Tentukan apakah menu harus dinonaktifkan
+    const shouldDisableMenu = isCashier && !sessionLoading && !hasActiveSession;
 
     return (
         <>
@@ -85,14 +105,47 @@ function MainNav({ userRole, closeSheet }: { userRole: string, closeSheet?: () =
                         Buka/Tutup Kasir
                     </SidebarNavItem>
                 )}
-                <SidebarNavItem href="/pos" active={isActive('/pos')} onClick={closeSheet}>
+                <SidebarNavItem 
+                    href="/pos" 
+                    active={isActive('/pos')} 
+                    onClick={(e) => {
+                        handlePOSClick(e);
+                        closeSheet?.();
+                    }}
+                    className={shouldDisableMenu ? 'opacity-50 cursor-not-allowed' : ''}
+                >
                     <ShoppingBag className="h-4 w-4" />
                     Transaksi (POS)
+                    {shouldDisableMenu && (
+                        <span className="ml-2 text-xs text-muted-foreground">(Perlu sesi aktif)</span>
+                    )}
                 </SidebarNavItem>
-                <SidebarNavItem href="#" onClick={handleOpenExpenseDialog}>
+                <SidebarNavItem 
+                    href="#" 
+                    onClick={handleOpenExpenseDialog}
+                    className={shouldDisableMenu ? 'opacity-50 cursor-not-allowed' : ''}
+                >
                     <TrendingDown className="h-4 w-4" />
                     Pengeluaran
+                    {shouldDisableMenu && (
+                        <span className="ml-2 text-xs text-muted-foreground">(Perlu sesi aktif)</span>
+                    )}
                 </SidebarNavItem>
+
+                {/* Menu yang selalu tersedia untuk kasir */}
+                {isCashier && (
+                    <div className="px-3 py-2">
+                        <h2 className="mb-2 px-4 text-lg font-semibold tracking-tight">Riwayat</h2>
+                        <SidebarNavItem href="/riwayattransaksi" active={isActive('/riwayattransaksi')} onClick={closeSheet}>
+                            <History className="h-4 w-4" />
+                            Transaksi
+                        </SidebarNavItem>
+                        <SidebarNavItem href="/riwayatpengeluaran" active={isActive('/riwayatpengeluaran')} onClick={closeSheet}>
+                            <List className="h-4 w-4" />
+                            Pengeluaran
+                        </SidebarNavItem>
+                    </div>
+                )}
 
                 {isOwner && (
                     <>
@@ -210,7 +263,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                 </SheetContent>
             </Sheet>
             <div className="flex-1 flex justify-start items-center gap-1 pl-2">
-              <AppLogo size="md" className="drop-shadow-lg" />
+              <AppLogo size="md" />
               <span className="font-headline text-xl font-bold text-white drop-shadow-sm tracking-tight">Maujajan POS</span>
             </div>
             {/* Avatar user di header dihapus agar lebih clean */}
@@ -239,42 +292,45 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           </div>
           {/* Menu kanan: owner = pengaturan, kasir = bulatan icon roda gigi untuk user info */}
           <div className="flex flex-1">
-            <BottomNavLink
-              href="/manajemenpengguna"
-              icon={<Settings className="h-6 w-6" />} 
-              label="Pengaturan"
-              style={{ display: user?.role === 'owner' ? 'flex' : 'none' }}
-            />
-            <div style={{ display: user?.role !== 'owner' ? 'flex' : 'none', flex: 1 }}>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <button className="flex flex-col items-center justify-center flex-1 min-w-14 h-full px-0 py-1 transition-all duration-200 relative focus:outline-none">
-                    <span className="relative flex items-center justify-center h-8 w-8">
-                      <span className="rounded-full border-2 border-primary/70 dark:border-white bg-background dark:bg-background flex items-center justify-center w-8 h-8">
-                        <Settings className="h-6 w-6 text-primary dark:text-white" />
+            {user?.role === 'owner' && (
+              <BottomNavLink
+                href="/manajemenpengguna"
+                icon={<Settings className="h-6 w-6" />} 
+                label="Pengaturan"
+              />
+            )}
+            {user?.role !== 'owner' && (
+              <div className="flex flex-1">
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <button className="flex flex-col items-center justify-center flex-1 min-w-14 h-full px-0 py-1 transition-all duration-200 relative focus:outline-none">
+                      <span className="relative flex items-center justify-center h-8 w-8">
+                        <span className="rounded-full border-2 border-primary/70 dark:border-white bg-background dark:bg-background flex items-center justify-center w-8 h-8">
+                          <Settings className="h-6 w-6 text-primary dark:text-white" />
+                        </span>
                       </span>
-                    </span>
-                    <span className="mt-0.5 text-xs font-semibold text-primary">Akun</span>
-                  </button>
-                </PopoverTrigger>
-                <PopoverContent align="end" side="top" className="w-64 p-4 rounded-xl shadow-xl border-0 bg-gradient-to-br from-blue-50 via-white to-purple-100">
-                  <div className="flex flex-col items-center gap-2">
-                    <Avatar className="h-12 w-12">
-                      <AvatarImage src="/avatars/01.png" alt={user.name} />
-                      <AvatarFallback className="text-primary dark:text-white bg-background">{user.name.charAt(0)}</AvatarFallback>
-                    </Avatar>
-                    <div className="text-center">
-                      <p className="text-base font-bold leading-none capitalize text-primary dark:text-white">{user.name}</p>
-                      <p className="text-xs leading-none text-foreground dark:text-white">{user.email}</p>
-                      <span className="inline-block mt-1 px-2 py-0.5 rounded-full bg-primary/10 text-primary text-xs font-semibold capitalize">{user.role}</span>
-                    </div>
-                    <button onClick={logout} className="mt-3 w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-destructive text-white font-semibold shadow hover:bg-destructive/90 transition-all">
-                      <LogOut className="h-4 w-4" /> Keluar
+                      <span className="mt-0.5 text-xs font-semibold text-primary">Akun</span>
                     </button>
-                  </div>
-                </PopoverContent>
-              </Popover>
-            </div>
+                  </PopoverTrigger>
+                  <PopoverContent align="end" side="top" className="w-64 p-4 rounded-xl shadow-xl border-0 bg-gradient-to-br from-blue-50 via-white to-purple-100">
+                    <div className="flex flex-col items-center gap-2">
+                      <Avatar className="h-12 w-12">
+                        <AvatarImage src="/avatars/01.png" alt={user.name} />
+                        <AvatarFallback className="text-primary dark:text-white bg-background">{user.name.charAt(0)}</AvatarFallback>
+                      </Avatar>
+                      <div className="text-center">
+                        <p className="text-base font-bold leading-none capitalize text-primary dark:text-white">{user.name}</p>
+                        <p className="text-xs leading-none text-foreground dark:text-white">{user.email}</p>
+                        <span className="inline-block mt-1 px-2 py-0.5 rounded-full bg-primary/10 text-primary text-xs font-semibold capitalize">{user.role}</span>
+                      </div>
+                      <button onClick={logout} className="mt-3 w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-destructive text-white font-semibold shadow hover:bg-destructive/90 transition-all">
+                        <LogOut className="h-4 w-4" /> Keluar
+                      </button>
+                    </div>
+                  </PopoverContent>
+                </Popover>
+              </div>
+            )}
           </div>
         </nav>
       </div>

@@ -211,6 +211,11 @@ function ProductForm({
       outletId: user?.outletId,
       categoryId: formData.categoryId
     };
+    
+    // Debug logging
+    console.log('DEBUG - Frontend formData.categoryId:', formData.categoryId, 'type:', typeof formData.categoryId);
+    console.log('DEBUG - Frontend finalFormData.categoryId:', finalFormData.categoryId, 'type:', typeof finalFormData.categoryId);
+    
     onSave(finalFormData);
   };
 
@@ -399,7 +404,7 @@ function ProductForm({
           </div>
           <DialogFooter className="gap-2 pt-2">
             <Button type="button" variant="secondary" onClick={onCancel} className="rounded-lg px-4 text-xs sm:text-sm">Batal</Button>
-            <Button type="submit" variant="popup">Simpan</Button>
+            <Button type="submit" variant="popup">{product ? 'Update' : 'Simpan'}</Button>
           </DialogFooter>
         </form>
       </DialogContent>
@@ -409,46 +414,47 @@ function ProductForm({
 
 
 export default function ManageProductsPage() {
+  const { user } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
-  const [isFormOpen, setIsFormOpen] = useState(false);
-  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
-  const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
-  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [productCategories, setProductCategories] = useState<string[]>([]);
   const [orderChannels, setOrderChannels] = useState<OrderChannel[]>([]);
   const [platformSettings, setPlatformSettings] = useState<PlatformSettings>({});
-  const [productCategories, setProductCategories] = useState<string[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("all");
+  const [isFormOpen, setIsFormOpen] = useState(false);
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const { toast } = useToast();
-  const { user } = useAuth();
 
   useEffect(() => {
     async function fetchData() {
+      if (!user) return;
+      
+      setIsLoading(true);
       try {
-        const [productsData, settingsData, channelsData] = await Promise.all([
+        const [fetchedProducts, fetchedCategories, fetchedChannels, fetchedSettings] = await Promise.all([
           getProducts(),
-          getPlatformSettings(),
-          getOrderChannels()
+          getProductCategories(),
+          getOrderChannels(),
+          getPlatformSettings()
         ]);
-        setProducts(productsData);
-        setPlatformSettings(settingsData);
-        setOrderChannels(channelsData);
-
-        // Extract unique categories from fetched products
-        const uniqueCategories = Array.from(new Set(productsData.map(p => typeof p.category === 'object' && p.category !== null ? p.category.name : p.category)));
-        setProductCategories(uniqueCategories.sort());
-
+        setProducts(fetchedProducts);
+        setProductCategories(fetchedCategories.map(c => c.name));
+        setOrderChannels(fetchedChannels);
+        setPlatformSettings(fetchedSettings);
       } catch (error) {
         console.error('Error fetching data:', error);
         toast({
           variant: "destructive",
           title: "Error",
-          description: "Gagal memuat data"
+          description: "Gagal mengambil data produk"
         });
+      } finally {
+        setIsLoading(false);
       }
     }
     fetchData();
-  }, [toast]);
+  }, [user, toast]);
 
   const handleMarkupChange = (channel: OrderChannel, value: string) => {
     const markup = Number(value);
@@ -516,7 +522,12 @@ export default function ManageProductsPage() {
 
     try {
       if (editingProduct) {
-        const updated = await updateProduct(editingProduct.id, productData);
+        // For update, ensure we send categoryId consistently
+        const updateData = {
+          ...productData,
+          categoryId: productData.categoryId // Ensure categoryId is sent for update
+        };
+        const updated = await updateProduct(editingProduct.id, updateData);
         setProducts(products.map(p => p.id === editingProduct.id ? updated : p));
         toast({
           title: "Sukses",
@@ -642,37 +653,50 @@ export default function ManageProductsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {products.map((product, idx) => (
-                  <TableRow key={product.id} className={cn('transition-colors', idx % 2 === 0 ? 'bg-white' : 'bg-[#F5F8FF]', 'hover:bg-primary/5')}>
-                    <TableCell className="py-2 px-2 text-xs">
-                      <img src={product.imageUrl} alt={product.name} width={40} height={40} style={{borderRadius:8,objectFit:'cover'}} />
-                    </TableCell>
-                    <TableCell className="py-2 px-2 font-medium text-xs">{product.name}</TableCell>
-                    <TableCell className="py-2 px-2 text-xs">{
-                      typeof product.category === 'object' && product.category !== null
-                        ? product.category.name
-                        : product.category
-                    }</TableCell>
-                    <TableCell className="py-2 px-2 text-xs">
-                      {product.variants.map(v => v.name).join(", ")}
-                    </TableCell>
-                    <TableCell className="py-2 px-2 text-xs">
-                      {product.variants.map(v => `Rp${v.price.toLocaleString('id-ID')}`).join(", ")}
-                    </TableCell>
-                    <TableCell className="py-2 px-2 text-xs">
-                      {product.variants.map((v, i) => (
-                        <span key={v.id} className="inline-flex items-center">
-                          {v.trackStock ? v.stock : <Infinity className="inline h-4 w-4 text-muted-foreground" />}
-                          {i < product.variants.length - 1 && <span className="mx-1 text-muted-foreground">,</span>}
-                        </span>
-                      ))}
-                    </TableCell>
-                    <TableCell className="py-2 px-2 text-right text-xs">
-                      <Button size="icon" variant="ghost" className="text-accent" onClick={() => handleEdit(product)}><Pencil className="h-4 w-4" /></Button>
-                      <Button size="icon" variant="ghost" className="text-destructive" onClick={() => handleDelete(product.id)}><Trash2 className="h-4 w-4" /></Button>
+                {isLoading ? (
+                  <TableRow>
+                    <TableCell colSpan={7} className="py-8 text-center">
+                      <div className="flex flex-col items-center gap-2">
+                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+                        <span className="text-sm text-muted-foreground">Memuat produk...</span>
+                      </div>
                     </TableCell>
                   </TableRow>
-                ))}
+                ) : filteredProducts.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">
+                      Tidak ada produk ditemukan.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  filteredProducts.map((product, idx) => (
+                    <TableRow key={product.id} className={cn('transition-colors', idx % 2 === 0 ? 'bg-white' : 'bg-[#F5F8FF]', 'hover:bg-primary/5')}>
+                      <TableCell className="py-2 px-2 text-xs">
+                        <img src={product.imageUrl} alt={product.name} width={40} height={40} style={{borderRadius:8,objectFit:'cover'}} />
+                      </TableCell>
+                      <TableCell className="py-2 px-2 font-medium text-xs">{product.name}</TableCell>
+                      <TableCell className="py-2 px-2 text-xs">{product.category}</TableCell>
+                      <TableCell className="py-2 px-2 text-xs">
+                        {product.variants.map(v => v.name).join(", ")}
+                      </TableCell>
+                      <TableCell className="py-2 px-2 text-xs">
+                        {product.variants.map(v => `Rp${v.price.toLocaleString('id-ID')}`).join(", ")}
+                      </TableCell>
+                      <TableCell className="py-2 px-2 text-xs">
+                        {product.variants.map((v, i) => (
+                          <span key={v.id} className="inline-flex items-center">
+                            {v.trackStock ? v.stock : <Infinity className="inline h-4 w-4 text-muted-foreground" />}
+                            {i < product.variants.length - 1 && <span className="mx-1 text-muted-foreground">,</span>}
+                          </span>
+                        ))}
+                      </TableCell>
+                      <TableCell className="py-2 px-2 text-right text-xs">
+                        <Button size="icon" variant="ghost" className="text-accent" onClick={() => handleEdit(product)}><Pencil className="h-4 w-4" /></Button>
+                        <Button size="icon" variant="ghost" className="text-destructive" onClick={() => handleDelete(product.id)}><Trash2 className="h-4 w-4" /></Button>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
               </TableBody>
             </Table>
           </div>

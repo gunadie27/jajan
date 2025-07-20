@@ -18,11 +18,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Calendar } from "@/components/ui/calendar"
 import type { Transaction, OrderChannel, Outlet } from "@/lib/types"
-import { CalendarIcon, History } from "lucide-react"
+import { CalendarIcon, History, Store } from "lucide-react"
 import { DateRange } from "react-day-picker"
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfDay, endOfDay } from "date-fns"
 import { getTransactions, getOutlets, getOrderChannels } from "@/services/data-service"
-import { useMediaQuery } from "@/hooks/use-mobile";
 import { useAuth } from "@/hooks/use-auth";
 
 export default function TransactionHistoryPage() {
@@ -34,24 +33,48 @@ export default function TransactionHistoryPage() {
   const [selectedOutlet, setSelectedOutlet] = useState("all");
   const [selectedChannel, setSelectedChannel] = useState<"all" | OrderChannel>("all");
   const [date, setDate] = useState<DateRange | undefined>();
+  const [isLoading, setIsLoading] = useState(true);
 
-  const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
-
+  // Fetch data
   useEffect(() => {
     async function fetchData() {
+      if (!user) return;
+      
+      setIsLoading(true);
+      try {
+        // Untuk kasir, hanya ambil data dari outlet miliknya
+        const outletId = user?.role === 'cashier' && user?.outletId ? user.outletId : undefined;
+        
         const [fetchedTransactions, fetchedOutlets, fetchedChannels] = await Promise.all([
-            getTransactions(),
+            getTransactions(outletId),
             getOutlets(),
             getOrderChannels()
         ]);
         setTransactions(fetchedTransactions);
         setOutlets(fetchedOutlets);
         setOrderChannels(fetchedChannels);
+      } catch (error) {
+        console.error('Error fetching data:', error);
+      } finally {
+        setIsLoading(false);
+      }
     }
     fetchData();
-  }, []);
+  }, [user]);
+
+  // Set selectedOutlet untuk kasir setelah outlets loaded
+  useEffect(() => {
+    if (user?.role === 'cashier' && user?.outletId && outlets.length > 0) {
+      const userOutlet = outlets.find(o => o.id === user.outletId);
+      if (userOutlet) {
+        setSelectedOutlet(userOutlet.id);
+      }
+    }
+  }, [user, outlets]);
 
   const filteredTransactions = useMemo(() => {
+    if (isLoading) return [];
+    
     return transactions
       .filter((transaction) => {
         // Filter by outlet
@@ -84,7 +107,7 @@ export default function TransactionHistoryPage() {
         return matchesId || matchesProduct;
       })
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [transactions, searchTerm, selectedOutlet, selectedChannel, date, outlets]);
+  }, [transactions, searchTerm, selectedOutlet, selectedChannel, date, outlets, isLoading]);
   
   const setDatePreset = (preset: 'today' | 'this_week' | 'this_month') => {
       const now = new Date();
@@ -107,6 +130,11 @@ export default function TransactionHistoryPage() {
       return method;
   }
 
+  // Dapatkan nama outlet untuk kasir
+  const userOutletName = user?.role === 'cashier' && user?.outletId 
+    ? outlets.find(o => o.id === user.outletId)?.name 
+    : null;
+
   return (
     <div className="flex flex-col gap-6 pb-4">
       {/* Header */}
@@ -116,6 +144,16 @@ export default function TransactionHistoryPage() {
           <h1 className="text-xl sm:text-2xl font-bold font-headline">Riwayat Transaksi</h1>
         </div>
         <p className="text-xs sm:text-sm text-muted-foreground text-center">Lihat dan filter semua transaksi yang telah tercatat.</p>
+        
+        {/* Informasi outlet untuk kasir */}
+        {user?.role === 'cashier' && userOutletName && (
+          <div className="flex items-center justify-center gap-2 mt-2 p-2 bg-blue-50 border border-blue-200 rounded-lg">
+            <Store className="w-4 h-4 text-blue-600" />
+            <span className="text-sm font-medium text-blue-800">
+              Outlet: {userOutletName}
+            </span>
+          </div>
+        )}
       </div>
       {/* Filter Section */}
       <div className="flex flex-wrap gap-2 items-center bg-[#F5F8FF] border border-border rounded-lg px-2 sm:px-4 py-2 mb-2">
@@ -193,7 +231,16 @@ export default function TransactionHistoryPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredTransactions.length === 0 ? (
+              {isLoading ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="h-24 text-center">
+                    <div className="flex items-center justify-center">
+                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+                      <span className="ml-2">Memuat data...</span>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ) : filteredTransactions.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={6} className="h-24 text-center">
                     Tidak ada transaksi ditemukan.

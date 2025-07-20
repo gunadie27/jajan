@@ -9,7 +9,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ResponsiveContainer, BarChart, XAxis, YAxis, Tooltip, CartesianGrid, Bar, AreaChart, Area, PieChart, Pie, Cell, Legend, Tooltip as RechartsTooltip } from 'recharts';
-import { CalendarIcon, TrendingUp, ShoppingCart, DollarSign, ArrowDown, ArrowUp, Filter as FilterIcon } from 'lucide-react';
+import { CalendarIcon, TrendingUp, ShoppingCart, DollarSign, ArrowDown, ArrowUp, Filter as FilterIcon, Store } from 'lucide-react';
 import { DateRange } from 'react-day-picker';
 import { format, differenceInDays, eachDayOfInterval, eachWeekOfInterval, eachMonthOfInterval, startOfDay, endOfDay, endOfWeek, endOfMonth, startOfWeek, startOfMonth, getDay, getHours } from 'date-fns';
 import { id as idLocale } from 'date-fns/locale';
@@ -19,7 +19,7 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { OrderChannel, PaymentMethod, Transaction, Outlet, Product, OrderChannelFilter } from '@/lib/types';
 import { getTransactions, getOutlets, getProducts, getOrderChannels } from '@/services/data-service';
-import { useMediaQuery } from "@/hooks/use-mobile";
+import { useAuth } from "@/hooks/use-auth";
 import { cn } from '@/lib/utils';
 
 
@@ -58,6 +58,7 @@ const dayLabels = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu
 const channelColors = ['#3F51B5', '#00B8D9', '#FFB300', '#FF7043', '#43A047', '#AB47BC'];
 
 export default function SalesReportPage() {
+  const { user } = useAuth();
   const [date, setDate] = useState<DateRange | undefined>({
     from: startOfMonth(new Date()),
     to: new Date(),
@@ -78,7 +79,8 @@ export default function SalesReportPage() {
   const [filterPopoverOpen, setFilterPopoverOpen] = useState(false);
   const [tempSelectedOutlet, setTempSelectedOutlet] = useState(selectedOutlet);
   const [tempSelectedCategory, setTempSelectedCategory] = useState(selectedCategory);
-  const [tempSelectedPaymentMethod, setTempSelectedPaymentMethod] = useState(selectedPaymentMethod);
+  const [tempSelectedPaymentMethod, setTempSelectedPaymentMethod] = useState<PaymentMethod | 'all'>(selectedPaymentMethod);
+  const [isLoading, setIsLoading] = useState(true);
 
   // Terapkan filter dari popover
   const applyPopoverFilter = () => {
@@ -93,10 +95,18 @@ export default function SalesReportPage() {
     setTempSelectedPaymentMethod('all');
   };
 
+  // Fetch data
   useEffect(() => {
     async function fetchData() {
+      if (!user) return;
+      
+      setIsLoading(true);
+      try {
+        // Untuk kasir, hanya ambil data dari outlet miliknya
+        const outletId = user?.role === 'cashier' && user?.outletId ? user.outletId : undefined;
+        
         const [transactions, outlets, products, channels] = await Promise.all([
-            getTransactions(),
+            getTransactions(outletId),
             getOutlets(),
             getProducts(),
             getOrderChannels(),
@@ -106,9 +116,25 @@ export default function SalesReportPage() {
         setAllProducts(products);
         setOrderChannelsState(channels);
         setProductCategories(['all', ...new Set(products.map(p => p.category))]);
+      } catch (error) {
+        console.error('Error fetching data:', error);
+      } finally {
+        setIsLoading(false);
+      }
     }
     fetchData();
-  }, []);
+  }, [user]);
+
+  // Set selectedOutlet untuk kasir setelah outlets loaded
+  useEffect(() => {
+    if (user?.role === 'cashier' && user?.outletId && allOutlets.length > 0) {
+      const userOutlet = allOutlets.find(o => o.id === user.outletId);
+      if (userOutlet) {
+        setSelectedOutlet(userOutlet.id);
+        setTempSelectedOutlet(userOutlet.id);
+      }
+    }
+  }, [user, allOutlets]);
 
   useEffect(() => {
     if (selectedPreset === 'custom') {
@@ -142,6 +168,8 @@ export default function SalesReportPage() {
 
   // == Start of Memoized Calculations ==
   const filteredTransactionsForSales = useMemo(() => {
+    if (isLoading) return [];
+    
     return allTransactions.filter((transaction) => {
       // Outlet Filter
       if (selectedOutlet !== 'all' && transaction.outlet !== allOutlets.find(o => o.id === selectedOutlet)?.name) {
@@ -172,7 +200,7 @@ export default function SalesReportPage() {
 
       return true;
     });
-  }, [date, selectedOutlet, selectedCategory, selectedPaymentMethod, selectedChannel, allTransactions, allOutlets]);
+  }, [date, selectedOutlet, selectedCategory, selectedPaymentMethod, selectedChannel, allTransactions, allOutlets, isLoading]);
 
   const salesSummaryData = useMemo(() => {
     if (!date?.from || !date.to) return [];
@@ -430,6 +458,11 @@ export default function SalesReportPage() {
     setCustomPopoverOpen(false);
   };
 
+  // Dapatkan nama outlet untuk kasir
+  const userOutletName = user?.role === 'cashier' && user?.outletId 
+    ? allOutlets.find(o => o.id === user.outletId)?.name 
+    : null;
+
   return (
     <div className="flex flex-col gap-6 pb-4">
       {/* Header */}
@@ -439,6 +472,16 @@ export default function SalesReportPage() {
           <h1 className="text-xl sm:text-2xl font-bold font-headline">Laporan Penjualan</h1>
         </div>
         <p className="text-xs sm:text-sm text-muted-foreground text-center">Analisis performa penjualan bisnis Anda secara komprehensif.</p>
+        
+        {/* Informasi outlet untuk kasir */}
+        {user?.role === 'cashier' && userOutletName && (
+          <div className="flex items-center justify-center gap-2 mt-2 p-2 bg-blue-50 border border-blue-200 rounded-lg">
+            <Store className="w-4 h-4 text-blue-600" />
+            <span className="text-sm font-medium text-blue-800">
+              Outlet: {userOutletName}
+            </span>
+          </div>
+        )}
       </div>
       {/* Filter Section */}
       <div className="flex gap-2 overflow-x-auto no-scrollbar px-2 sm:px-4 pb-2 -mx-2 items-center">
@@ -452,6 +495,7 @@ export default function SalesReportPage() {
           </PopoverTrigger>
           <PopoverContent className="w-64 p-4" align="start">
             <div className="flex flex-col gap-3">
+              {user?.role !== 'cashier' && (
               <div>
                 <Label className="text-xs mb-1">Merchant/Outlet</Label>
                 <Select value={tempSelectedOutlet} onValueChange={setTempSelectedOutlet}>
@@ -466,6 +510,7 @@ export default function SalesReportPage() {
                   </SelectContent>
                 </Select>
               </div>
+              )}
               <div>
                 <Label className="text-xs mb-1">Kategori</Label>
                 <Select value={tempSelectedCategory} onValueChange={setTempSelectedCategory}>
@@ -481,7 +526,7 @@ export default function SalesReportPage() {
               </div>
               <div>
                 <Label className="text-xs mb-1">Metode Bayar</Label>
-                <Select value={tempSelectedPaymentMethod} onValueChange={setTempSelectedPaymentMethod}>
+                <Select value={tempSelectedPaymentMethod} onValueChange={(value) => setTempSelectedPaymentMethod(value as PaymentMethod | 'all')}>
                   <SelectTrigger className="w-full text-xs">
                     <SelectValue placeholder="Metode Bayar" />
                   </SelectTrigger>

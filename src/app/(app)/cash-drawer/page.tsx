@@ -31,22 +31,38 @@ export default function CashDrawerPage() {
     const [allExpenses, setAllExpenses] = useState<Expense[]>([]);
     const [allOutlets, setAllOutlets] = useState<Outlet[]>([]);
 
-    useEffect(() => {
-        async function fetchData() {
-            if (user) {
-                const [transactions, expenses, outlets, cashierSessions] = await Promise.all([
-                    getTransactions(),
-                    getExpenses(),
-                    getOutlets(),
-                    getCashierSessions()
-                ]);
-                setAllTransactions(transactions);
-                setAllExpenses(expenses);
-                setAllOutlets(outlets);
-                setSessions(cashierSessions);
-            }
+    const fetchData = async () => {
+        if (user) {
+            // Untuk kasir, hanya ambil data dari outlet miliknya
+            const outletId = user.role === 'cashier' && user.outletId ? user.outletId : undefined;
+            
+            const [transactions, expenses, outlets, cashierSessions] = await Promise.all([
+                getTransactions(outletId),
+                getExpenses(outletId),
+                getOutlets(),
+                getCashierSessions(outletId)
+            ]);
+            
+            setAllTransactions(transactions);
+            setAllExpenses(expenses);
+            setAllOutlets(outlets);
+            setSessions(cashierSessions);
         }
+    };
+
+    useEffect(() => {
         fetchData();
+    }, [user]);
+
+    // Refresh data setiap 10 detik untuk real-time updates
+    useEffect(() => {
+        if (!user) return;
+        
+        const interval = setInterval(() => {
+            fetchData();
+        }, 10000);
+
+        return () => clearInterval(interval);
     }, [user]);
 
 
@@ -55,8 +71,18 @@ export default function CashDrawerPage() {
     const sessionData = useMemo(() => {
         if (!activeSession) return null;
 
-        const sessionTransactions = allTransactions.filter(t => new Date(t.date) >= new Date(activeSession.startTime));
-        const sessionExpenses = allExpenses.filter(e => new Date(e.date) >= new Date(activeSession.startTime));
+        // Filter transaksi dan pengeluaran berdasarkan outlet kasir
+        const sessionTransactions = allTransactions.filter(t => {
+            const isInSession = new Date(t.date) >= new Date(activeSession.startTime);
+            const isCorrectOutlet = user?.role === 'cashier' ? t.outlet === activeSession.outletName : true;
+            return isInSession && isCorrectOutlet;
+        });
+        
+        const sessionExpenses = allExpenses.filter(e => {
+            const isInSession = new Date(e.date) >= new Date(activeSession.startTime);
+            const isCorrectOutlet = user?.role === 'cashier' ? e.outlet === activeSession.outletName : true;
+            return isInSession && isCorrectOutlet;
+        });
 
         // Breakdown berdasarkan metode pembayaran
         const cashSales = sessionTransactions.reduce((sum, t) => {
@@ -89,7 +115,7 @@ export default function CashDrawerPage() {
             transactionCount: sessionTransactions.length,
             expenseCount: sessionExpenses.length
         };
-    }, [activeSession, finalCash, allTransactions, allExpenses]);
+    }, [activeSession, finalCash, allTransactions, allExpenses, user]);
 
 
     const handleOpenSession = async () => {
@@ -107,7 +133,10 @@ export default function CashDrawerPage() {
             status: 'active',
         };
         const newSession = await addCashierSession(newSessionData);
-        setSessions(prev => [...prev, newSession]);
+        
+        // Refresh data setelah buka sesi
+        await fetchData();
+        
         setOpenSessionDialog(false);
         setInitialCash(0);
         toast({
@@ -129,9 +158,8 @@ export default function CashDrawerPage() {
 
         const updatedSession = await updateCashierSession(activeSession.id, updatedSessionData);
 
-        if (updatedSession) {
-             setSessions(prev => prev.map(s => s.id === activeSession.id ? updatedSession : s));
-        }
+        // Refresh data setelah tutup sesi
+        await fetchData();
 
         setCloseSessionDialog(false);
         setFinalCash(0);

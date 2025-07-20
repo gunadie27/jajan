@@ -30,6 +30,7 @@ export default function DashboardPage() {
     to: new Date(),
   });
   const [isExpenseDialogOpen, setIsExpenseDialogOpen] = useState(false);
+  const [isDataLoading, setIsDataLoading] = useState(true);
   const { toast } = useToast();
   const [error, setError] = useState<string | null>(null);
 
@@ -43,6 +44,7 @@ export default function DashboardPage() {
   useEffect(() => {
     if (isLoading || !user) return;
     setError(null);
+    setIsDataLoading(true);
     const fetchData = async () => {
       try {
         const fetchedOutlets = await getOutlets();
@@ -68,6 +70,8 @@ export default function DashboardPage() {
       } catch (err: any) {
         setError('Gagal mengambil data. Silakan coba lagi.');
         toast({ title: 'Error', description: 'Gagal mengambil data dashboard', variant: 'destructive' });
+      } finally {
+        setIsDataLoading(false);
       }
     };
     fetchData();
@@ -146,7 +150,20 @@ export default function DashboardPage() {
   };
 
   return (
-    <div className="flex flex-col gap-4 sm:gap-6">
+    <div className="flex flex-col gap-4 sm:gap-6 relative">
+      {/* Loading Overlay */}
+      {isDataLoading && (
+        <div className="absolute inset-0 bg-background/80 z-50 flex items-center justify-center">
+          <div className="flex flex-col items-center gap-4">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+            <div className="text-center">
+              <p className="text-lg font-semibold text-primary">Memuat Dashboard</p>
+              <p className="text-sm text-muted-foreground">Mengambil data transaksi dan pengeluaran...</p>
+            </div>
+          </div>
+        </div>
+      )}
+      
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 mt-2 sm:mt-4 px-2 sm:px-0">
         <div className="flex items-center gap-2">
@@ -288,7 +305,7 @@ export default function DashboardPage() {
             <CardTitle className="text-xs font-medium text-purple-900 dark:text-purple-200 text-center">Rata-rata Transaksi</CardTitle>
           </CardHeader>
           <CardContent className="p-0 flex flex-col items-center justify-center text-center">
-            <div className="text-lg sm:text-2xl font-bold text-purple-900 dark:text-purple-200">Rp{summaryStats.averageTransaction.toLocaleString('id-ID')}</div>
+            <div className="text-lg sm:text-2xl font-bold text-purple-900 dark:text-purple-200">Rp{Math.round(summaryStats.averageTransaction).toLocaleString('id-ID')}</div>
           </CardContent>
         </Card>
         )}
@@ -308,7 +325,16 @@ export default function DashboardPage() {
                 </tr>
               </thead>
               <tbody>
-                {allExpenses.filter(e => {
+                {isDataLoading ? (
+                  <tr>
+                    <td colSpan={4} className="text-center py-8">
+                      <div className="flex flex-col items-center gap-2">
+                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+                        <span className="text-sm text-muted-foreground">Memuat pengeluaran...</span>
+                      </div>
+                    </td>
+                  </tr>
+                ) : allExpenses.filter(e => {
                   const now = new Date();
                   const d = new Date(e.date);
                   return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();

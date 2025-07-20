@@ -8,12 +8,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Calendar } from '@/components/ui/calendar';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { CalendarIcon, TrendingUp, TrendingDown, Wallet } from 'lucide-react';
+import { CalendarIcon, TrendingUp, TrendingDown, Wallet, Store } from 'lucide-react';
 import { DateRange } from 'react-day-picker';
 import { format, subDays, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from 'date-fns';
 import { id as idLocale } from 'date-fns/locale';
 import type { Transaction, Expense, Outlet } from '@/lib/types';
 import { getTransactions, getExpenses, getOutlets } from '@/services/data-service';
+import { useAuth } from "@/hooks/use-auth";
 
 type DatePreset = 'today' | 'this_week' | 'this_month' | 'custom';
 
@@ -29,6 +30,7 @@ function formatCurrency(value: number) {
 }
 
 export default function ProfitLossReportPage() {
+  const { user } = useAuth();
   const [date, setDate] = useState<DateRange | undefined>({
     from: startOfMonth(new Date()),
     to: new Date(),
@@ -40,20 +42,44 @@ export default function ProfitLossReportPage() {
   const [allTransactions, setAllTransactions] = useState<Transaction[]>([]);
   const [allExpenses, setAllExpenses] = useState<Expense[]>([]);
   const [allOutlets, setAllOutlets] = useState<Outlet[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
+  // Fetch data
   useEffect(() => {
     async function fetchData() {
+      if (!user) return;
+      
+      setIsLoading(true);
+      try {
+        // Untuk kasir, hanya ambil data dari outlet miliknya
+        const outletId = user?.role === 'cashier' && user?.outletId ? user.outletId : undefined;
+        
         const [transactions, expenses, outlets] = await Promise.all([
-            getTransactions(),
-            getExpenses(),
+            getTransactions(outletId),
+            getExpenses(outletId),
             getOutlets()
         ]);
         setAllTransactions(transactions);
         setAllExpenses(expenses);
         setAllOutlets(outlets);
+      } catch (error) {
+        console.error('Error fetching data:', error);
+      } finally {
+        setIsLoading(false);
+      }
     }
     fetchData();
-  }, []);
+  }, [user]);
+
+  // Set selectedOutlet untuk kasir setelah outlets loaded
+  useEffect(() => {
+    if (user?.role === 'cashier' && user?.outletId && allOutlets.length > 0) {
+      const userOutlet = allOutlets.find(o => o.id === user.outletId);
+      if (userOutlet) {
+        setSelectedOutlet(userOutlet.id);
+      }
+    }
+  }, [user, allOutlets]);
 
   useEffect(() => {
     const now = new Date();
@@ -93,6 +119,17 @@ export default function ProfitLossReportPage() {
     netProfit,
     expenseBreakdown
   } = useMemo(() => {
+    if (isLoading) {
+      return {
+        totalRevenue: 0,
+        totalCogs: 0,
+        grossProfit: 0,
+        totalExpenses: 0,
+        netProfit: 0,
+        expenseBreakdown: {}
+      };
+    }
+    
     const fromDate = date?.from ? startOfDay(date.from) : null;
     const toDate = date?.to ? endOfDay(date.to) : null;
 
@@ -127,7 +164,7 @@ export default function ProfitLossReportPage() {
     const netProfit = grossProfit - totalExpenses;
 
     return { totalRevenue, totalCogs, grossProfit, totalExpenses, netProfit, expenseBreakdown };
-  }, [date, selectedOutlet, allTransactions, allExpenses, allOutlets]);
+  }, [date, selectedOutlet, allTransactions, allExpenses, allOutlets, isLoading]);
 
   const displayedDateRange = useMemo(() => {
     if (!date?.from) return "Pilih tanggal";
@@ -135,6 +172,10 @@ export default function ProfitLossReportPage() {
     return `${format(date.from, "d MMM y", { locale: idLocale })} - ${format(date.to ?? date.from, "d MMM y", { locale: idLocale })}`;
   }, [date, selectedPreset]);
 
+  // Dapatkan nama outlet untuk kasir
+  const userOutletName = user?.role === 'cashier' && user?.outletId 
+    ? allOutlets.find(o => o.id === user.outletId)?.name 
+    : null;
 
   return (
     <div className="flex flex-col gap-6 pb-4">
@@ -145,6 +186,16 @@ export default function ProfitLossReportPage() {
           <h1 className="text-xl sm:text-2xl font-bold font-headline">Laporan Laba Rugi</h1>
         </div>
         <p className="text-xs sm:text-sm text-muted-foreground text-center">Analisis profitabilitas bisnis Anda.</p>
+        
+        {/* Informasi outlet untuk kasir */}
+        {user?.role === 'cashier' && userOutletName && (
+          <div className="flex items-center justify-center gap-2 mt-2 p-2 bg-blue-50 border border-blue-200 rounded-lg">
+            <Store className="w-4 h-4 text-blue-600" />
+            <span className="text-sm font-medium text-blue-800">
+              Outlet: {userOutletName}
+            </span>
+          </div>
+        )}
       </div>
       {/* Filter Section */}
       <div className="flex gap-2 overflow-x-auto no-scrollbar px-2 sm:px-4 pb-2 -mx-2 mb-2">
@@ -184,6 +235,7 @@ export default function ProfitLossReportPage() {
                         />
                     </DialogContent>
                 </Dialog>
+                {user?.role !== 'cashier' && (
                 <Select value={selectedOutlet} onValueChange={setSelectedOutlet}>
           <SelectTrigger className="min-w-[120px] max-w-[180px] text-xs sm:text-sm">
                         <SelectValue placeholder="Pilih Outlet" />
@@ -195,6 +247,7 @@ export default function ProfitLossReportPage() {
                         ))}
                     </SelectContent>
                 </Select>
+                )}
             </div>
       {/* Card dan tabel lain tetap, sesuaikan style jika perlu */}
 

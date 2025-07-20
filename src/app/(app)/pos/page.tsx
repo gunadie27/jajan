@@ -39,6 +39,8 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useCustomerStore } from '@/store/customerStore';
 import { getCustomerByPhone } from '@/services/data-service';
+import { useCashierSession } from "@/hooks/use-cashier-session";
+import { SessionWarning } from "@/components/session-warning";
 
 
 function getVariantPriceForChannel(variant: ProductVariant, channel: OrderChannel, markup: number): number {
@@ -159,7 +161,7 @@ function WhatsAppDialog({
     const generateReceiptText = (customerName: string) => {
         let text = `*Struk Digital - Maujajan POS*\n\n`;
         text += `Yth. ${customerName || 'Pelanggan'}\n\n`;
-        text += `ID Transaksi: ${transaction?.id?.toString() || '-'}\n`;
+        text += `ID Transaksi: ${transaction?.id ? String(transaction.id) : '-'}\n`;
         text += `Tanggal: ${transaction ? new Intl.DateTimeFormat('id-ID', { dateStyle: 'long', timeStyle: 'short' }).format(new Date(transaction.date)) : '-'}\n`;
         text += `Outlet: ${transaction?.outlet || '-'}\n`;
         text += `--------------------------------\n`;
@@ -321,11 +323,13 @@ export default function POSPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [orderChannel, setOrderChannel] = useState<OrderChannel>('store');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
+  const [isLoading, setIsLoading] = useState(true);
   const { toast } = useToast();
   const { user } = useAuth();
   const router = useRouter();
   // const isMobile = useIsMobile(); // (opsional, jika ingin dipakai untuk deteksi mobile di komponen)
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+  const { hasActiveSession } = useCashierSession();
 
   // Fix: Use correct property names from CustomerStore
   const customerStore = useCustomerStore();
@@ -343,6 +347,8 @@ export default function POSPage() {
 
   useEffect(() => {
     async function fetchData() {
+      try {
+        setIsLoading(true);
         const [fetchedProducts, fetchedCustomers, fetchedSettings, fetchedOutlets] = await Promise.all([
             getProducts(),
             getCustomers(),
@@ -352,6 +358,16 @@ export default function POSPage() {
         setProducts(fetchedProducts);
         setPlatformSettings(fetchedSettings);
         setOutlets(fetchedOutlets);
+      } catch (error) {
+        console.error('Error fetching data:', error);
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: "Gagal memuat data produk"
+        });
+      } finally {
+        setIsLoading(false);
+      }
     }
     fetchData();
   }, []);
@@ -425,7 +441,9 @@ export default function POSPage() {
         items: order,
         total: finalTotal,
         date: new Date(),
-        outlet: outlets.length > 0 ? outlets[0].name : "Default Outlet", 
+        outlet: user?.role === 'cashier' && user?.outletId 
+          ? outlets.find(o => o.id === user.outletId)?.name || "Default Outlet"
+          : outlets.length > 0 ? outlets[0].name : "Default Outlet", 
         orderChannel: orderChannel,
         paymentMethod: paymentMethod,
         cashReceived: paymentMethod === 'cash' ? cashReceived : undefined,
@@ -701,7 +719,12 @@ export default function POSPage() {
       <div className="flex-1 flex flex-col md:flex-row">
         {/* Produk grid */}
         <div className="flex-1 p-2 grid grid-cols-3 gap-2 sm:gap-4">
-          {filteredProducts.length === 0 ? (
+          {isLoading ? (
+            <div className="col-span-full flex flex-col items-center justify-center py-12">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mb-4"></div>
+              <p className="text-muted-foreground text-center">Memuat produk...</p>
+            </div>
+          ) : filteredProducts.length === 0 ? (
             <div className="col-span-full text-center text-muted-foreground py-12">Tidak ada produk ditemukan.</div>
           ) : (
             filteredProducts.map((product, idx) => {

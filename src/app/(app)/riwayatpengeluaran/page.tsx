@@ -20,16 +20,17 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import type { Expense, Outlet } from "@/lib/types"
-import { CalendarIcon, List, Pencil, Trash2, X } from "lucide-react"
+import { CalendarIcon, List, Pencil, Trash2, X, Store } from "lucide-react"
 import { DateRange } from "react-day-picker"
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfDay, endOfDay } from "date-fns"
 import { getExpenses, getOutlets, updateExpense, deleteExpense } from "@/services/data-service"
 import { cn } from "@/lib/utils";
-import { useMediaQuery } from "@/hooks/use-mobile";
+import { useAuth } from "@/hooks/use-auth";
 
 import { ExpenseDialog } from "@/components/expense-dialog";
 
 export default function ExpenseHistoryPage() {
+  const { user } = useAuth();
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [outlets, setOutlets] = useState<Outlet[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
@@ -39,12 +40,20 @@ export default function ExpenseHistoryPage() {
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [expenseCategories, setExpenseCategories] = useState<string[]>([]);
   const { toast } = useToast();
-  const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
+  const [isLoading, setIsLoading] = useState(true);
 
+  // Fetch data
   useEffect(() => {
     async function fetchData() {
+      if (!user) return;
+      
+      setIsLoading(true);
+      try {
+        // Untuk kasir, hanya ambil data dari outlet miliknya
+        const outletId = user?.role === 'cashier' && user?.outletId ? user.outletId : undefined;
+        
         const [fetchedExpenses, fetchedOutlets] = await Promise.all([
-            getExpenses(),
+            getExpenses(outletId),
             getOutlets()
         ]);
         setExpenses(fetchedExpenses);
@@ -53,11 +62,28 @@ export default function ExpenseHistoryPage() {
         // Extract unique categories from fetched expenses
         const uniqueCategories = Array.from(new Set(fetchedExpenses.map(e => e.category)));
         setExpenseCategories(uniqueCategories.sort());
+      } catch (error) {
+        console.error('Error fetching data:', error);
+      } finally {
+        setIsLoading(false);
+      }
     }
     fetchData();
-  }, []);
+  }, [user]);
+
+  // Set selectedOutlet untuk kasir setelah outlets loaded
+  useEffect(() => {
+    if (user?.role === 'cashier' && user?.outletId && outlets.length > 0) {
+      const userOutlet = outlets.find(o => o.id === user.outletId);
+      if (userOutlet) {
+        setSelectedOutlet(userOutlet.id);
+      }
+    }
+  }, [user, outlets]);
 
   const filteredExpenses = useMemo(() => {
+    if (isLoading) return [];
+    
     return expenses
       .filter((expense) => {
         // Filter by outlet
@@ -82,7 +108,7 @@ export default function ExpenseHistoryPage() {
         return expense.description.toLowerCase().includes(lowercasedTerm);
       })
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [expenses, searchTerm, selectedOutlet, date, outlets]);
+  }, [expenses, searchTerm, selectedOutlet, date, outlets, isLoading]);
 
   const setDatePreset = (preset: 'today' | 'this_week' | 'this_month') => {
       const now = new Date();
@@ -103,7 +129,14 @@ export default function ExpenseHistoryPage() {
   const handleDeleteExpense = async (expenseId: string) => {
     try {
       await deleteExpense(expenseId);
-      setExpenses(expenses.filter(e => e.id !== expenseId));
+      
+      // Refresh data setelah delete
+      const outletId = user?.role === 'cashier' && user?.outletId ? user.outletId : undefined;
+      const [fetchedExpenses] = await Promise.all([
+          getExpenses(outletId)
+      ]);
+      setExpenses(fetchedExpenses);
+      
       toast({
         title: "Sukses",
         description: "Pengeluaran berhasil dihapus"
@@ -118,16 +151,19 @@ export default function ExpenseHistoryPage() {
     }
   };
 
-  const handleSaveExpense = async (expenseData: Omit<Expense, 'id'>) => {
+  const handleSaveExpense = async () => {
     try {
-      if (editingExpense) {
-        const updated = await updateExpense(editingExpense.id, expenseData);
-        setExpenses(expenses.map(e => e.id === editingExpense.id ? updated : e));
-        toast({
-          title: "Sukses",
-          description: "Pengeluaran berhasil diperbarui"
-        });
-      }
+      // Refresh data setelah edit
+      const outletId = user?.role === 'cashier' && user?.outletId ? user.outletId : undefined;
+      const [fetchedExpenses] = await Promise.all([
+          getExpenses(outletId)
+      ]);
+      setExpenses(fetchedExpenses);
+      
+      toast({
+        title: "Sukses",
+        description: "Pengeluaran berhasil diperbarui"
+      });
       setIsExpenseFormOpen(false);
       setEditingExpense(null);
     } catch (error) {
@@ -140,6 +176,11 @@ export default function ExpenseHistoryPage() {
     }
   };
 
+  // Dapatkan nama outlet untuk kasir
+  const userOutletName = user?.role === 'cashier' && user?.outletId 
+    ? outlets.find(o => o.id === user.outletId)?.name 
+    : null;
+
   return (
     <div className="flex flex-col gap-6 pb-4">
       {/* Header */}
@@ -149,6 +190,16 @@ export default function ExpenseHistoryPage() {
           <h1 className="text-xl sm:text-2xl font-bold font-headline">Riwayat Pengeluaran</h1>
         </div>
         <p className="text-xs sm:text-sm text-muted-foreground text-center">Lihat dan filter semua pengeluaran yang telah tercatat.</p>
+        
+        {/* Informasi outlet untuk kasir */}
+        {user?.role === 'cashier' && userOutletName && (
+          <div className="flex items-center justify-center gap-2 mt-2 p-2 bg-blue-50 border border-blue-200 rounded-lg">
+            <Store className="w-4 h-4 text-blue-600" />
+            <span className="text-sm font-medium text-blue-800">
+              Outlet: {userOutletName}
+            </span>
+          </div>
+        )}
       </div>
       {/* Filter Section */}
       <div className="flex flex-wrap gap-2 items-center bg-[#F5F8FF] border border-border rounded-lg px-2 sm:px-4 py-2 mb-2">
@@ -158,6 +209,7 @@ export default function ExpenseHistoryPage() {
           onChange={(e) => setSearchTerm(e.target.value)}
           className="rounded-lg shadow bg-white px-3 py-2 w-full sm:w-auto max-w-xs text-xs sm:text-sm"
         />
+        {user?.role !== 'cashier' && (
         <Select value={selectedOutlet} onValueChange={setSelectedOutlet}>
           <SelectTrigger className="min-w-[120px] max-w-[160px] text-xs sm:text-sm">
             <SelectValue placeholder="Pilih Outlet" />
@@ -169,6 +221,7 @@ export default function ExpenseHistoryPage() {
             ))}
           </SelectContent>
         </Select>
+        )}
         <Button variant="outline" className="rounded-lg bg-white px-3 py-2 text-xs sm:text-sm whitespace-nowrap" onClick={() => setDatePreset('today')}>Hari ini</Button>
         <Button variant="outline" className="rounded-lg bg-white px-3 py-2 text-xs sm:text-sm whitespace-nowrap" onClick={() => setDatePreset('this_week')}>Minggu ini</Button>
         <Button variant="outline" className="rounded-lg bg-white px-3 py-2 text-xs sm:text-sm whitespace-nowrap" onClick={() => setDatePreset('this_month')}>Bulan ini</Button>
@@ -216,7 +269,16 @@ export default function ExpenseHistoryPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filteredExpenses.length === 0 ? (
+            {isLoading ? (
+              <TableRow>
+                <TableCell colSpan={6} className="h-24 text-center">
+                  <div className="flex items-center justify-center">
+                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+                    <span className="ml-2">Memuat data...</span>
+                  </div>
+                </TableCell>
+              </TableRow>
+            ) : filteredExpenses.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={6} className="h-24 text-center">
                   Tidak ada pengeluaran ditemukan.

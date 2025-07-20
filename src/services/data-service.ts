@@ -73,7 +73,13 @@ export async function getProducts(): Promise<Product[]> {
             createdAt: 'asc'
         }
     });
-    return products as any;
+    
+    // Transform data to match Product type
+    return products.map(product => ({
+        ...product,
+        category: product.category?.name || 'Unknown Category', // Extract category name
+        categoryId: product.categoryId?.toString() // Ensure categoryId is string
+    })) as Product[];
 }
 
 export async function getProductCategories(): Promise<{ id: string; name: string }[]> {
@@ -100,8 +106,15 @@ export async function addProduct(productData: Omit<Product, 'id'> & { categoryId
         throw new Error('Forbidden: Cashier can only add product for their own outlet');
     }
     const { name, imageUrl, variants, outletId, categoryId } = productData;
+    
+    // Debug logging
+    console.log('DEBUG - categoryId received:', categoryId, 'type:', typeof categoryId);
+    
     const categoryIdNum = Number(categoryId);
+    console.log('DEBUG - categoryIdNum after Number():', categoryIdNum, 'isNaN:', isNaN(categoryIdNum));
+    
     if (!categoryId || isNaN(categoryIdNum)) {
+        console.log('DEBUG - Validation failed: categoryId is invalid');
         throw new Error('Kategori produk tidak valid. Silakan pilih ulang kategori.');
     }
     const data: any = {
@@ -126,14 +139,37 @@ export async function addProduct(productData: Omit<Product, 'id'> & { categoryId
             category: true
         }
     });
-    return newProduct as any;
+    
+    // Transform data to match Product type
+    return {
+        ...newProduct,
+        category: newProduct.category?.name || 'Unknown Category',
+        categoryId: newProduct.categoryId?.toString()
+    } as Product;
 }
 
 export async function updateProduct(productId: string, productData: Omit<Product, 'id'>): Promise<Product> {
-    const { name, category, imageUrl, variants } = productData;
+    const { name, category, categoryId, imageUrl, variants } = productData;
 
     // Ambil data produk lama
     const oldProduct = await prisma.product.findUnique({ where: { id: productId } });
+    
+    // Handle both category and categoryId fields from frontend
+    let finalCategoryId: number;
+    if (categoryId) {
+        // If categoryId is provided, use it
+        finalCategoryId = typeof categoryId === 'string' ? parseInt(categoryId) : categoryId;
+    } else if (category) {
+        // If category is provided, use it
+        finalCategoryId = typeof category === 'string' ? parseInt(category) : category;
+    } else {
+        throw new Error('Kategori produk tidak valid. Silakan pilih ulang kategori.');
+    }
+    
+    if (isNaN(finalCategoryId)) {
+        throw new Error('Kategori produk tidak valid. Silakan pilih ulang kategori.');
+    }
+    
     // Prisma doesn't support direct upsert on nested relations with a custom ID.
     // So we manage variants manually: delete old ones, create new ones.
     const updatedProduct = await prisma.$transaction(async (tx) => {
@@ -142,7 +178,7 @@ export async function updateProduct(productId: string, productData: Omit<Product
             where: { id: productId },
             data: {
                 name,
-                categoryId: Number(category),
+                categoryId: finalCategoryId,
                 imageUrl,
                 variants: {
                     create: variants.map(v => ({
@@ -168,7 +204,12 @@ export async function updateProduct(productId: string, productData: Omit<Product
             }
         }
     }
-    return updatedProduct as any;
+    // Transform data to match Product type
+    return {
+        ...updatedProduct,
+        category: updatedProduct.category?.name || 'Unknown Category',
+        categoryId: updatedProduct.categoryId?.toString()
+    } as Product;
 }
 
 export async function deleteProduct(productId: string): Promise<void> {
@@ -221,9 +262,16 @@ export async function addTransaction(transactionData: Omit<Transaction, 'id'>, c
     }
     // Jika kasir, pastikan hanya untuk outlet-nya sendiri
     if (currentUser.role === 'cashier') {
-        const outletRecord = await prisma.outlet.findUnique({ where: { name: transactionData.outlet } });
-        if (!outletRecord || outletRecord.id !== currentUser.outletId) {
-            throw new Error('Forbidden: Cashier can only add transaction for their own outlet');
+        // Gunakan outletId yang sudah ada di user, tidak perlu mencari berdasarkan name
+        if (currentUser.outletId) {
+            const outletRecord = await prisma.outlet.findUnique({ where: { id: currentUser.outletId } });
+            if (!outletRecord) {
+                throw new Error('Forbidden: Cashier outlet not found');
+            }
+            // Override outlet name dengan outlet milik kasir
+            transactionData.outlet = outletRecord.name;
+        } else {
+            throw new Error('Forbidden: Cashier must have assigned outlet');
         }
     }
     const { items, total, date, outlet, orderChannel, paymentMethod, cashReceived, change, customerId, customerName, cashierSessionId } = transactionData;
@@ -620,8 +668,10 @@ export async function updatePlatformSettings(newSettings: PlatformSettings): Pro
 }
 
 // --- Cashier Session Service ---
-export async function getCashierSessions(): Promise<CashierSession[]> {
+export async function getCashierSessions(outletId?: string): Promise<CashierSession[]> {
+    const whereClause = outletId && outletId !== 'all' ? { outletId } : {};
     const sessions = await prisma.cashierSession.findMany({
+        where: whereClause,
         orderBy: { startTime: 'desc' },
         include: { transactions: true, expenses: true }
     });

@@ -15,6 +15,7 @@ export type Product = {
   id: string;
   name: string;
   category: string;
+  categoryId?: string; // Add categoryId for form operations
   imageUrl: string;
   variants: ProductVariant[];
   outletId?: string;

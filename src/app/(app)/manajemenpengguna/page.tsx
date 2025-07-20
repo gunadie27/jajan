@@ -161,16 +161,24 @@ export default function ManageUsersPage() {
   const [outlets, setOutlets] = useState<Outlet[]>([]);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const { user } = useAuth();
 
   useEffect(() => {
     async function fetchData() {
+      setIsLoading(true);
+      try {
         const [fetchedUsers, fetchedOutlets] = await Promise.all([
             getUsers(),
             getOutlets()
         ]);
         setUsers(fetchedUsers);
         setOutlets(fetchedOutlets);
+      } catch (error) {
+        console.error('Error fetching data:', error);
+      } finally {
+        setIsLoading(false);
+      }
     }
     fetchData();
   }, []);
@@ -249,7 +257,23 @@ export default function ManageUsersPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {users.map((user) => (
+              {isLoading ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="py-8 text-center">
+                    <div className="flex flex-col items-center gap-2">
+                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+                      <span className="text-sm text-muted-foreground">Memuat pengguna...</span>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ) : users.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">
+                    Tidak ada pengguna ditemukan.
+                  </TableCell>
+                </TableRow>
+              ) : (
+                users.map((user) => (
                   <TableRow key={user.id} className="transition-colors hover:bg-[#F5F8FF]">
                     <TableCell className="py-2 px-2 font-medium text-xs">{user.name}</TableCell>
                     <TableCell className="py-2 px-2 text-xs">{user.username}</TableCell>
@@ -259,9 +283,10 @@ export default function ManageUsersPage() {
                     <TableCell className="py-2 px-2 text-right text-xs">
                       <Button size="icon" variant="ghost" className="text-accent" onClick={() => handleEdit(user)}><Eye className="h-4 w-4" /></Button>
                       <Button size="icon" variant="ghost" className="text-destructive" onClick={() => handleDelete(user.id)}><Trash2 className="h-4 w-4" /></Button>
-                  </TableCell>
-                </TableRow>
-              ))}
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
             </TableBody>
           </Table>
           </div>
