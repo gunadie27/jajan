@@ -338,6 +338,23 @@ export async function addTransaction(transactionData: Omit<Transaction, 'id'>, c
                     items: { include: { product: true, variant: true } }
                 }
             });
+
+            // Update customer data if customerId is provided
+            if (customerId) {
+                await prisma.customer.update({
+                    where: { id: customerId },
+                    data: {
+                        totalSpent: {
+                            increment: total
+                        },
+                        lastTransactionDate: date,
+                        transactionIds: {
+                            push: newTransaction.id
+                        }
+                    }
+                });
+            }
+
             return newTransaction as any;
         } catch (error: any) {
             if (error.code === 'P2002' && error.meta?.target?.includes('transactionNumber')) {
@@ -519,7 +536,18 @@ export async function deleteUser(userId: string): Promise<void> {
 
 // --- Customer Service ---
 export async function getCustomers(): Promise<Customer[]> {
-    return await prisma.customer.findMany({ orderBy: { lastTransactionDate: 'desc' } }) as any;
+    const customers = await prisma.customer.findMany({ 
+        include: {
+            outlet: true // Include outlet data
+        },
+        orderBy: { lastTransactionDate: 'desc' } 
+    });
+    
+    // Transform data to match Customer type
+    return customers.map(customer => ({
+        ...customer,
+        outletName: customer.outlet?.name || 'Outlet Tidak Dikenal'
+    })) as Customer[];
 }
 
 export async function getCustomerByPhone(phoneNumber: string): Promise<Customer | null> {

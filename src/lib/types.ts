@@ -38,6 +38,7 @@ export type Customer = {
     totalSpent: number;
     transactionIds: string[];
     outletId: string;
+    outletName?: string; // Add outlet name for display
 }
 
 export type PaymentMethod = 'cash' | 'qris' | 'platform_balance';

@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/table"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { Contact, MoreHorizontal, Edit, Trash2 } from "lucide-react"
+import { Contact, MoreHorizontal, Edit, Trash2, Building2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -22,7 +22,14 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import type { Customer, Transaction } from "@/lib/types"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import type { Customer, Transaction, Outlet } from "@/lib/types"
 import * as dataService from "@/services/data-service"
 import { useToast } from "@/hooks/use-toast"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
@@ -34,20 +41,39 @@ export default function ManageCustomersPage() {
   const fetchCustomers = useCustomerStore(state => state.fetchCustomers);
   const updateCustomer = useCustomerStore(state => state.updateCustomer);
   const [allTransactions, setAllTransactions] = useState<Transaction[]>([]);
+  const [outlets, setOutlets] = useState<Outlet[]>([]);
   const [searchTerm, setSearchTerm] = useState<string>("");
+  const [selectedOutlet, setSelectedOutlet] = useState<string>("all");
   const [isFormOpen, setIsFormOpen] = useState<boolean>(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const { toast } = useToast();
   const router = useRouter();
 
   useEffect(() => {
-    fetchCustomers();
-    async function fetchTx() {
-      const tx = await dataService.getTransactions();
-      setAllTransactions(tx);
+    async function fetchData() {
+      setIsLoading(true);
+      try {
+        await fetchCustomers();
+        const [tx, fetchedOutlets] = await Promise.all([
+          dataService.getTransactions(),
+          dataService.getOutlets()
+        ]);
+        setAllTransactions(tx);
+        setOutlets(fetchedOutlets);
+      } catch (error) {
+        console.error('Error fetching data:', error);
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: "Gagal mengambil data pelanggan"
+        });
+      } finally {
+        setIsLoading(false);
+      }
     }
-    fetchTx();
-  }, [router]);
+    fetchData();
+  }, [router, toast]);
 
   const handleEditCustomer = (customer: Customer) => {
     setEditingCustomer(customer);
@@ -106,14 +132,24 @@ export default function ManageCustomersPage() {
   const filteredCustomers = useMemo(() => {
     return customers
       .filter((customer: Customer) => {
-        if (!searchTerm) return true;
-        const lowercasedTerm = searchTerm.toLowerCase();
-        const matchesName = customer.name.toLowerCase().includes(lowercasedTerm);
-        const matchesPhone = customer.phoneNumber.includes(lowercasedTerm);
-        return matchesName || matchesPhone;
+        // Search filter
+        if (searchTerm) {
+          const lowercasedTerm = searchTerm.toLowerCase();
+          const matchesName = customer.name.toLowerCase().includes(lowercasedTerm);
+          const matchesPhone = customer.phoneNumber.includes(lowercasedTerm);
+          if (!matchesName && !matchesPhone) return false;
+        }
+        
+        // Outlet filter
+        if (selectedOutlet !== 'all') {
+          const outletName = outlets.find(o => o.id === selectedOutlet)?.name;
+          if (customer.outletName !== outletName) return false;
+        }
+        
+        return true;
       })
       .sort((a: Customer, b: Customer) => new Date(b.lastTransactionDate).getTime() - new Date(a.lastTransactionDate).getTime());
-  }, [customers, searchTerm]);
+  }, [customers, searchTerm, selectedOutlet, outlets]);
 
   const getCustomerStats = (customer: Customer) => {
     const customerTransactions = allTransactions.filter(t => t.customerId === customer.id);
@@ -140,6 +176,22 @@ export default function ManageCustomersPage() {
           onChange={(e) => setSearchTerm(e.target.value)}
           className="rounded-lg shadow bg-white px-3 py-2 w-full md:w-auto max-w-sm text-xs sm:text-sm"
         />
+        <Select value={selectedOutlet} onValueChange={setSelectedOutlet}>
+          <SelectTrigger className="min-w-[150px] max-w-[200px] text-xs sm:text-sm">
+            <SelectValue placeholder="Pilih Outlet" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Semua Outlet</SelectItem>
+            {outlets.map((outlet) => (
+              <SelectItem key={outlet.id} value={outlet.id}>
+                <div className="flex items-center gap-2">
+                  <Building2 className="h-3 w-3" />
+                  {outlet.name}
+                </div>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
       {/* Tabel Pelanggan Section */}
       <Card className="rounded-xl !border-0 border-0 !shadow-none shadow-none p-2 sm:p-4 md:p-6 w-full">
@@ -150,6 +202,7 @@ export default function ManageCustomersPage() {
                 <TableRow>
                   <TableHead className="py-2 px-2 font-semibold text-xs">Nama Pelanggan</TableHead>
                   <TableHead className="py-2 px-2 font-semibold text-xs">Nomor WhatsApp</TableHead>
+                  <TableHead className="py-2 px-2 font-semibold text-xs">Asal Pelanggan</TableHead>
                   <TableHead className="py-2 px-2 font-semibold text-xs">Kunjungan Terakhir</TableHead>
                   <TableHead className="py-2 px-2 font-semibold text-xs">Total Transaksi</TableHead>
                   <TableHead className="py-2 px-2 font-semibold text-xs text-right">Total Belanja</TableHead>
@@ -157,32 +210,47 @@ export default function ManageCustomersPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredCustomers.map((customer: Customer, idx: number) => {
-                  const stats = getCustomerStats(customer);
-                  return (
-                    <TableRow key={customer.id} className={((idx % 2 === 0) ? "bg-white" : "bg-[#F5F8FF]") + " hover:bg-primary/5 transition-colors"}>
-                      <TableCell className="py-2 px-2 font-medium text-xs">{customer.name}</TableCell>
-                      <TableCell className="py-2 px-2 text-xs">{customer.phoneNumber}</TableCell>
-                      <TableCell className="py-2 px-2 text-xs">{new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium' }).format(new Date(customer.lastTransactionDate))}</TableCell>
-                      <TableCell className="py-2 px-2 text-xs">{stats.transactionCount} kali</TableCell>
-                      <TableCell className="py-2 px-2 text-right font-medium text-xs">Rp{stats.totalSpent.toLocaleString("id-ID")}</TableCell>
-                      <TableCell className="py-2 px-2 text-right text-xs">
-                        <Button size="icon" variant="ghost" className="rounded-full hover:bg-primary/10 text-primary" onClick={() => handleEditCustomer(customer)}>
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button size="icon" variant="ghost" className="rounded-full hover:bg-red-100 text-red-500 ml-2" onClick={() => handleDeleteCustomer(customer.id)}>
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  )
-                })}
-                {filteredCustomers.length === 0 && (
+                {isLoading ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="h-24 text-center">
+                    <TableCell colSpan={7} className="py-8 text-center">
+                      <div className="flex flex-col items-center gap-2">
+                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+                        <span className="text-sm text-muted-foreground">Memuat data pelanggan...</span>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ) : filteredCustomers.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
                       Tidak ada pelanggan yang ditemukan.
                     </TableCell>
                   </TableRow>
+                ) : (
+                  filteredCustomers.map((customer: Customer, idx: number) => {
+                    const stats = getCustomerStats(customer);
+                    return (
+                      <TableRow key={customer.id} className={((idx % 2 === 0) ? "bg-white" : "bg-[#F5F8FF]") + " hover:bg-primary/5 transition-colors"}>
+                        <TableCell className="py-2 px-2 font-medium text-xs">{customer.name}</TableCell>
+                        <TableCell className="py-2 px-2 text-xs">{customer.phoneNumber}</TableCell>
+                        <TableCell className="py-2 px-2 text-xs">
+                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                            {customer.outletName || 'Outlet Tidak Dikenal'}
+                          </span>
+                        </TableCell>
+                        <TableCell className="py-2 px-2 text-xs">{new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium' }).format(new Date(customer.lastTransactionDate))}</TableCell>
+                        <TableCell className="py-2 px-2 text-xs">{stats.transactionCount} kali</TableCell>
+                        <TableCell className="py-2 px-2 text-right font-medium text-xs">Rp{stats.totalSpent.toLocaleString("id-ID")}</TableCell>
+                        <TableCell className="py-2 px-2 text-right text-xs">
+                          <Button size="icon" variant="ghost" className="rounded-full hover:bg-primary/10 text-primary" onClick={() => handleEditCustomer(customer)}>
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button size="icon" variant="ghost" className="rounded-full hover:bg-red-100 text-red-500 ml-2" onClick={() => handleDeleteCustomer(customer.id)}>
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })
                 )}
               </TableBody>
             </Table>
