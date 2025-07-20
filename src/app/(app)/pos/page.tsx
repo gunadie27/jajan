@@ -38,6 +38,7 @@ import {
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useCustomerStore } from '@/store/customerStore';
+import { getCustomerByPhone } from '@/services/data-service';
 
 
 function getVariantPriceForChannel(variant: ProductVariant, channel: OrderChannel, markup: number): number {
@@ -158,16 +159,16 @@ function WhatsAppDialog({
     const generateReceiptText = (customerName: string) => {
         let text = `*Struk Digital - Maujajan POS*\n\n`;
         text += `Yth. ${customerName || 'Pelanggan'}\n\n`;
-        text += `ID Transaksi: ${transaction?.id || '-'}\n`;
+        text += `ID Transaksi: ${transaction?.id?.toString() || '-'}\n`;
         text += `Tanggal: ${transaction ? new Intl.DateTimeFormat('id-ID', { dateStyle: 'long', timeStyle: 'short' }).format(new Date(transaction.date)) : '-'}\n`;
         text += `Outlet: ${transaction?.outlet || '-'}\n`;
         text += `--------------------------------\n`;
         transaction?.items.forEach(item => {
             text += `${item.product.name} (${item.variant.name})\n`;
-            text += `${item.quantity} x Rp${item.price.toLocaleString('id-ID')} = Rp${(item.quantity * item.price).toLocaleString('id-ID')}\n`;
+            text += `${item.quantity} x Rp${item.price.toLocaleString('id-ID')} = Rp${(Number(item.quantity) * Number(item.price)).toLocaleString('id-ID')}\n`;
         });
         text += `--------------------------------\n`;
-        text += `*Total: Rp${transaction?.total?.toLocaleString('id-ID') || 0}*\n\n`;
+        text += `*Total: Rp${(transaction?.total ?? 0).toLocaleString('id-ID')}*\n\n`;
         text += `Terima kasih telah berkunjung!`;
         return encodeURIComponent(text);
     }

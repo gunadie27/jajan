@@ -233,53 +233,80 @@ export async function addTransaction(transactionData: Omit<Transaction, 'id'>, c
 
     // Generate kode outlet otomatis dari nama outlet (ambil huruf pertama tiap kata, max 4 huruf, uppercase)
     const outletCode = outletRecord.name.split(' ').map(k => k[0]).join('').toUpperCase().slice(0, 4);
+    
     // Tanggal transaksi (pakai date dari transaksi, fallback ke now)
     const trxDate = date ? new Date(date) : new Date();
     const yy = String(trxDate.getFullYear()).slice(-2);
     const mm = String(trxDate.getMonth() + 1).padStart(2, '0');
     const dd = String(trxDate.getDate()).padStart(2, '0');
     const dateStr = `${yy}${mm}${dd}`;
-    // Hitung nomor urut transaksi pada hari itu untuk outlet tsb
-    const trxCount = await prisma.transaction.count({
-      where: {
-        outletId: outletRecord.id,
-        date: {
-          gte: new Date(`${trxDate.getFullYear()}-${mm}-${dd}T00:00:00.000Z`),
-          lt: new Date(`${trxDate.getFullYear()}-${mm}-${dd}T23:59:59.999Z`)
-        }
-      }
-    });
-    const urut = String(trxCount + 1).padStart(5, '0');
-    const transactionNumber = `TRX-${dateStr}-${outletCode}-${urut}`;
+    
+    // Retry logic untuk handle race condition
+    let retryCount = 0;
+    const maxRetries = 5;
+    
+    while (retryCount < maxRetries) {
+        try {
+            // Hitung nomor urut transaksi pada hari itu untuk outlet tsb
+            const trxCount = await prisma.transaction.count({
+                where: {
+                    outletId: outletRecord.id,
+                    date: {
+                        gte: new Date(`${trxDate.getFullYear()}-${mm}-${dd}T00:00:00.000Z`),
+                        lt: new Date(`${trxDate.getFullYear()}-${mm}-${dd}T23:59:59.999Z`)
+                    }
+                }
+            });
+            
+            // Tambahkan timestamp untuk memastikan keunikan
+            const timestamp = Date.now().toString().slice(-6);
+            const urut = String(trxCount + 1).padStart(5, '0');
+            const transactionNumber = `TRX-${dateStr}-${outletCode}-${urut}-${timestamp}`;
 
-    const newTransaction = await prisma.transaction.create({
-        data: {
-            transactionNumber,
-            total,
-            date,
-            outletName: outlet,
-            outletId: outletRecord.id,
-            orderChannel,
-            paymentMethod,
-            cashReceived,
-            change,
-            customerId,
-            customerName,
-            cashierSessionId,
-            items: {
-                create: items.map((item: OrderItem) => ({
-                    quantity: item.quantity,
-                    price: item.price,
-                    productId: item.product.id,
-                    variantId: item.variant.id,
-                }))
+            const newTransaction = await prisma.transaction.create({
+                data: {
+                    transactionNumber,
+                    total,
+                    date,
+                    outletName: outlet,
+                    outletId: outletRecord.id,
+                    orderChannel,
+                    paymentMethod,
+                    cashReceived,
+                    change,
+                    customerId,
+                    customerName,
+                    cashierSessionId,
+                    items: {
+                        create: items.map((item: OrderItem) => ({
+                            quantity: item.quantity,
+                            price: item.price,
+                            productId: item.product.id,
+                            variantId: item.variant.id,
+                        }))
+                    }
+                } as any,
+                include: {
+                    items: { include: { product: true, variant: true } }
+                }
+            });
+            return newTransaction as any;
+        } catch (error: any) {
+            if (error.code === 'P2002' && error.meta?.target?.includes('transactionNumber')) {
+                // Unique constraint violation, retry
+                retryCount++;
+                if (retryCount >= maxRetries) {
+                    throw new Error('Gagal membuat transaksi setelah beberapa percobaan. Silakan coba lagi.');
+                }
+                // Tunggu sebentar sebelum retry
+                await new Promise(resolve => setTimeout(resolve, 100));
+            } else {
+                throw error;
             }
-        } as any, // <-- tambahkan as any
-        include: {
-            items: { include: { product: true, variant: true } }
         }
-    });
-    return newTransaction as any;
+    }
+    
+    throw new Error('Gagal membuat transaksi setelah beberapa percobaan. Silakan coba lagi.');
 }
 
 export async function updateTransaction(transactionId: string, updateData: Partial<Omit<Transaction, 'id'>>): Promise<Transaction> {
@@ -447,6 +474,11 @@ export async function getCustomers(): Promise<Customer[]> {
     return await prisma.customer.findMany({ orderBy: { lastTransactionDate: 'desc' } }) as any;
 }
 
+export async function getCustomerByPhone(phoneNumber: string): Promise<Customer | null> {
+  const customer = await prisma.customer.findUnique({ where: { phoneNumber } });
+  return customer as any;
+}
+
 // Zod schema untuk validasi customer
 const customerSchema = z.object({
   name: z.string().min(2).max(50),
@@ -460,14 +492,46 @@ const customerSchema = z.object({
 
 export async function addCustomer(customerData: Omit<Customer, 'id'>, currentUser: User): Promise<Customer> {
     if (!customerData.outletId) throw new Error('outletId is required');
-    const { outletId, ...rest } = customerData;
-    const newCustomer = await prisma.customer.create({
-        data: {
-            ...rest,
-            outlet: { connect: { id: outletId } }
-        },
-    });
-    return newCustomer as any;
+    
+    try {
+        // Coba buat customer baru
+        const { outletId, ...rest } = customerData;
+        const newCustomer = await prisma.customer.create({
+            data: {
+                ...rest,
+                outlet: { connect: { id: outletId } }
+            },
+        });
+        return newCustomer as any;
+    } catch (error: any) {
+        // Jika error karena phoneNumber sudah ada, coba update customer yang sudah ada
+        if (error.code === 'P2002' && error.meta?.target?.includes('phoneNumber')) {
+            console.log(`[CUSTOMER] Phone number ${customerData.phoneNumber} already exists, updating existing customer`);
+            
+            // Cari customer yang sudah ada berdasarkan phoneNumber
+            const existingCustomer = await prisma.customer.findUnique({
+                where: { phoneNumber: customerData.phoneNumber }
+            });
+            
+            if (existingCustomer) {
+                // Update customer yang sudah ada dengan data baru
+                const updatedCustomer = await prisma.customer.update({
+                    where: { id: existingCustomer.id },
+                    data: {
+                        name: customerData.name,
+                        lastTransactionDate: customerData.lastTransactionDate,
+                        totalSpent: existingCustomer.totalSpent + customerData.totalSpent,
+                        transactionIds: [...existingCustomer.transactionIds, ...customerData.transactionIds],
+                        outletId: customerData.outletId
+                    }
+                });
+                return updatedCustomer as any;
+            }
+        }
+        
+        // Jika bukan error duplicate atau customer tidak ditemukan, throw error asli
+        throw error;
+    }
 }
 
 export async function updateCustomer(customerId: string, customerData: Partial<Omit<Customer, 'id'>>): Promise<Customer> {

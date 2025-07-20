@@ -58,13 +58,19 @@ export function ExpenseDialog({
 
   useEffect(() => {
     if (isOpen && !expense) {
-      setFormData(initialExpenseFormState);
+      // Untuk kasir, set outlet otomatis saat form baru
+      if (user?.role === 'cashier' && user.outletId) {
+        const outletObj = outlets.find(o => o.id === user.outletId);
+        setFormData({ ...initialExpenseFormState, outlet: outletObj ? outletObj.name : '' });
+      } else {
+        setFormData(initialExpenseFormState);
+      }
     } 
     else if (isOpen && expense) {
       const isNew = !expenseCategories.includes(expense.category);
       setFormData({ ...expense, isNewCategory: isNew });
     }
-  }, [isOpen, expense, expenseCategories]);
+  }, [isOpen, expense, expenseCategories, user, outlets]);
 
   useEffect(() => {
     if (isOpen) {
@@ -76,15 +82,16 @@ export function ExpenseDialog({
         setOutlets(fetchedOutlets);
         const uniqueCategories = Array.from(new Set(fetchedExpenses.map(e => e.category)));
         setExpenseCategories(uniqueCategories.sort());
-        // Jika kasir, set outlet otomatis
-        if (user?.role === 'cashier' && user.outletId) {
+        
+        // Jika kasir dan formData outlet masih kosong, set outlet otomatis
+        if (user?.role === 'cashier' && user.outletId && !formData.outlet) {
           const outletObj = fetchedOutlets.find(o => o.id === user.outletId);
           setFormData(prev => ({ ...prev, outlet: outletObj ? outletObj.name : '' }));
         }
       }
       fetchData();
     }
-  }, [isOpen, user]);
+  }, [isOpen, user, formData.outlet]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -110,21 +117,34 @@ export function ExpenseDialog({
       toast({ variant: "destructive", title: "Error", description: "Kategori tidak boleh kosong." });
       return;
     }
-    if (!formData.outlet) {
+    // Validasi outlet hanya untuk owner
+    if (user?.role === 'owner' && !formData.outlet) {
       toast({ variant: "destructive", title: "Error", description: "Outlet tidak boleh kosong." });
       return;
     }
 
     try {
+      // Untuk kasir, pastikan outlet terisi dari user.outletId
+      let finalFormData = { ...formData };
+      if (user?.role === 'cashier' && user.outletId) {
+        const outletObj = outlets.find(o => o.id === user.outletId);
+        if (outletObj) {
+          finalFormData.outlet = outletObj.name;
+        } else {
+          toast({ variant: "destructive", title: "Error", description: "Outlet tidak ditemukan. Silakan coba lagi." });
+          return;
+        }
+      }
+
       if (expense) {
-        await updateExpense(expense.id, formData);
+        await updateExpense(expense.id, finalFormData);
         toast({ title: "Sukses", description: "Pengeluaran berhasil diperbarui" });
       } else {
         if (!user) {
           toast({ variant: "destructive", title: "Error", description: "User tidak ditemukan. Silakan login ulang." });
           return;
         }
-        await addExpense(formData, user);
+        await addExpense(finalFormData, user);
         toast({ title: "Sukses", description: "Pengeluaran berhasil ditambahkan" });
       }
       onSaveSuccess?.();
@@ -228,7 +248,7 @@ export function ExpenseDialog({
               />
             )}
           </div>
-          {/* Outlet field: hanya tampil untuk owner */}
+          {/* Outlet field: hanya tampil untuk owner, kasir readonly */}
           {user?.role === 'owner' && (
           <div className="grid grid-cols-4 items-center gap-2 sm:gap-4">
             <Label htmlFor="outlet" className="text-right text-xs sm:text-sm">Outlet</Label>

@@ -27,7 +27,7 @@ import { MoreHorizontal, PlusCircle, Users, Eye, EyeOff, Trash2 } from "lucide-r
 import type { User, Outlet } from "@/lib/types"
 import { Badge } from "@/components/ui/badge"
 import { getOutlets, getUsers, addUser, updateUser, deleteUser } from "@/services/data-service"
-import { useMediaQuery } from "@/hooks/use-mobile";
+import { useAuth } from "@/hooks/use-auth";
 
 const initialUserFormState: Omit<User, 'id'> = {
   name: '',
@@ -161,6 +161,7 @@ export default function ManageUsersPage() {
   const [outlets, setOutlets] = useState<Outlet[]>([]);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
+  const { user } = useAuth();
 
   useEffect(() => {
     async function fetchData() {
@@ -191,10 +192,18 @@ export default function ManageUsersPage() {
 
   const handleSave = async (userData: Omit<User, 'id'>) => {
     if (editingUser) {
-      const updatedUser = await updateUser(editingUser.id, userData);
+      if (!user) {
+        alert('User tidak ditemukan. Silakan login ulang.');
+        return;
+      }
+      const updatedUser = await updateUser(editingUser.id, userData, user);
       setUsers(users.map(u => (u.id === editingUser.id ? updatedUser : u)));
     } else {
-      const newUser = await addUser(userData);
+      if (!user) {
+        alert('User tidak ditemukan. Silakan login ulang.');
+        return;
+      }
+      const newUser = await addUser(userData, user);
       setUsers([...users, newUser]);
     }
     setIsFormOpen(false);
