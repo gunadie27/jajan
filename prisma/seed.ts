@@ -70,12 +70,19 @@ async function main() {
   console.log(`Created user with id: ${user.id}`);
 
   // 5. Buat beberapa produk contoh
+  // Cari kategori berdasarkan nama
+  const makananCategory = await prisma.productCategory.findFirst({ where: { name: 'Makanan' } });
+  const minumanCategory = await prisma.productCategory.findFirst({ where: { name: 'Minuman' } });
+  if (!makananCategory || !minumanCategory) {
+    throw new Error('Kategori Makanan/Minuman belum ada di database.');
+  }
+
   const product1 = await prisma.product.create({
     data: {
       name: 'Nasi Goreng',
-      category: 'Makanan',
+      category: { connect: { id: makananCategory.id } },
       imageUrl: '/images/nasi-goreng.jpg',
-      outletId: mainOutlet.id,
+      outlet: { connect: { id: mainOutlet.id } },
     },
   });
   console.log(`Created product with id: ${product1.id}`);
@@ -93,9 +100,9 @@ async function main() {
   const product2 = await prisma.product.create({
     data: {
       name: 'Es Teh Manis',
-      category: 'Minuman',
+      category: { connect: { id: minumanCategory.id } },
       imageUrl: '/images/es-teh.jpg',
-      outletId: mainOutlet.id,
+      outlet: { connect: { id: mainOutlet.id } },
     },
   });
   console.log(`Created product with id: ${product2.id}`);

@@ -14,6 +14,7 @@ export const users: User[] = [
         id: 'user-1',
         name: 'Admin Owner',
         email: 'owner@maujajan.com',
+        username: 'owner',
         password: 'password', // Plain text for mock data
         role: 'owner',
     },
@@ -21,6 +22,7 @@ export const users: User[] = [
         id: 'user-2',
         name: 'Budi (Kasir Kemang)',
         email: 'cashier@maujajan.com',
+        username: 'budi',
         password: 'password', // Plain text for mock data
         role: 'cashier',
         outletId: 'outlet-1'

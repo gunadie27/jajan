@@ -150,7 +150,7 @@ function WhatsAppDialog({
     useEffect(() => {
       if (!isOpen) {
         document.body.scrollTop = 0;
-        document.body.style.zoom = 1;
+        document.body.style.zoom = "1";
         setName("");
         setPhone("");
         setError("");
@@ -633,9 +633,9 @@ export default function POSPage() {
   const isProductInCart = (product: Product) => order.some(item => item.product.id === product.id);
 
   return (
-    <div className="flex flex-col min-h-screen bg-background">
+    <div className="flex flex-col min-h-screen bg-background pb-28">
       {/* Header & Search */}
-      <div className="sticky top-0 z-20 bg-background/95 px-4 pt-4 pb-2 flex flex-col gap-2 shadow-sm">
+      <div className="sticky top-0 z-20 bg-background/95 px-2 pt-2 pb-1 flex flex-col gap-1 shadow-sm">
         <div className="flex items-center justify-between">
           <h1 className="text-xl font-bold tracking-tight">Transaksi Baru</h1>
           {/* Floating cart button for mobile */}
@@ -836,8 +836,8 @@ export default function POSPage() {
       </div>
       {/* Sticky bottom bar for total & bayar */}
       <div className="fixed left-0 right-0 bottom-16 z-40 md:hidden px-2 pointer-events-auto">
-        <div className="w-full max-w-md mx-auto bg-gradient-to-br from-white via-blue-50 to-purple-50 rounded-2xl shadow-2xl flex items-center justify-between px-4 py-3 gap-2 border-t border-border mb-6 transition-all duration-300" style={{minHeight: 64, boxShadow: '0 8px 32px 0 rgba(31,38,135,0.18)', marginBottom: 24}}>
-          <div className="flex items-center gap-3 flex-1">
+        <div className="w-full max-w-md mx-auto bg-gradient-to-br from-white via-blue-50 to-purple-50 rounded-2xl shadow-2xl flex items-center justify-between px-2 py-1 gap-1 border-t border-border mb-2 transition-all duration-300" style={{minHeight: 40, boxShadow: '0 8px 32px 0 rgba(31,38,135,0.18)', marginBottom: 8}}>
+          <div className="flex items-center gap-2 flex-1">
             <span className="bg-primary/10 rounded-full p-2 flex items-center justify-center">
               <ShoppingCart className="h-6 w-6 text-primary" />
             </span>
@@ -850,7 +850,7 @@ export default function POSPage() {
           <Button
             variant="popup"
             size="lg"
-            className="flex items-center gap-2 px-6 py-2"
+            className="flex items-center gap-2 px-4 py-2 text-base font-bold"
             disabled={order.length === 0}
             onClick={() => setCartOpen(true)}
           >
