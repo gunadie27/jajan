@@ -537,17 +537,11 @@ export async function deleteUser(userId: string): Promise<void> {
 // --- Customer Service ---
 export async function getCustomers(): Promise<Customer[]> {
     const customers = await prisma.customer.findMany({ 
-        include: {
-            outlet: true // Include outlet data
-        },
         orderBy: { lastTransactionDate: 'desc' } 
     });
     
     // Transform data to match Customer type
-    return customers.map(customer => ({
-        ...customer,
-        outletName: customer.outlet?.name || 'Outlet Tidak Dikenal'
-    })) as Customer[];
+    return customers as Customer[];
 }
 
 export async function getCustomerByPhone(phoneNumber: string): Promise<Customer | null> {
@@ -563,20 +557,14 @@ const customerSchema = z.object({
   lastTransactionDate: z.date(),
   totalSpent: z.number().min(0),
   transactionIds: z.array(z.string()),
-  outletId: z.string(),
 });
 
-export async function addCustomer(customerData: Omit<Customer, 'id'>, currentUser: User): Promise<Customer> {
-    if (!customerData.outletId) throw new Error('outletId is required');
+export async function addCustomer(customerData: Omit<Customer, 'id' | 'isMember' | 'memberId' | 'lastUsedDiscount'>, transactionOutletId: string): Promise<Customer> {
     
     try {
         // Coba buat customer baru
-        const { outletId, ...rest } = customerData;
         const newCustomer = await prisma.customer.create({
-            data: {
-                ...rest,
-                outlet: { connect: { id: outletId } }
-            },
+            data: customerData,
         });
         return newCustomer as any;
     } catch (error: any) {
@@ -598,7 +586,6 @@ export async function addCustomer(customerData: Omit<Customer, 'id'>, currentUse
                         lastTransactionDate: customerData.lastTransactionDate,
                         totalSpent: existingCustomer.totalSpent + customerData.totalSpent,
                         transactionIds: [...existingCustomer.transactionIds, ...customerData.transactionIds],
-                        outletId: customerData.outletId
                     }
                 });
                 return updatedCustomer as any;

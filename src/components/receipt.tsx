@@ -1,6 +1,7 @@
 
 import type { Transaction, OrderChannel, ProductVariant } from "@/lib/types";
 import { AppLogo } from "@/components/app-logo";
+import { QRCode } from 'qrcode.react';
 
 function formatCurrency(value: number | undefined | null) {
     if (typeof value !== 'number' || isNaN(value)) return 'Rp0';
@@ -8,7 +9,15 @@ function formatCurrency(value: number | undefined | null) {
 }
 
 export function Receipt({ transaction }: { transaction: Transaction }) {
-  const { id, transactionNumber, date, items, total, outlet, paymentMethod, orderChannel, cashReceived, change, customerName } = transaction;
+  const { id, transactionNumber, date, items, total, outlet, paymentMethod, orderChannel, cashReceived, change, customerName, customer } = transaction;
+
+  // QR code logic: tampilkan jika ada customer dengan memberId dan name
+  let qrValue = '';
+  let memberName = '';
+  if (customer && customer.memberId && customer.name) {
+    qrValue = JSON.stringify({ memberId: customer.memberId, name: customer.name });
+    memberName = customer.name;
+  }
 
   return (
     <div className="printable-area bg-white text-black font-mono p-4 max-w-xs mx-auto">
@@ -61,7 +70,14 @@ export function Receipt({ transaction }: { transaction: Transaction }) {
                  </>
             )}
         </div>
-        
+        {/* QR code member */}
+        {qrValue && (
+          <div className="flex flex-col items-center mt-6 mb-2">
+            <QRCode value={qrValue} size={96} level="M" includeMargin={false} />
+            <span className="text-xs mt-2 font-semibold">{memberName}</span>
+            <span className="text-[10px] text-muted-foreground">Member QR</span>
+          </div>
+        )}
         <div className="text-center mt-6 text-xs">
             <p>Terima kasih telah berkunjung!</p>
             <p>@maujajan.pos</p>

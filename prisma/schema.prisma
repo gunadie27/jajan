@@ -5,7 +5,6 @@ generator client {
 datasource db {
   provider  = "postgresql"
   url       = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL")
 }
 
 model Outlet {
@@ -16,7 +15,6 @@ model Outlet {
   updatedAt       DateTime         @updatedAt
   code            String?          @unique
   cashierSessions CashierSession[]
-  customers       Customer[]       @relation("OutletCustomers")
   expenses        Expense[]
   products        Product[]        @relation("OutletProducts")
   transactions    Transaction[]
@@ -126,14 +124,15 @@ model Customer {
   id                   String        @id @default(uuid())
   name                 String
   phoneNumber          String        @unique
+  isMember             Boolean       @default(true)
+  memberId             String        @unique @default(uuid())
+  lastUsedDiscount     DateTime?
   firstTransactionDate DateTime
   lastTransactionDate  DateTime
   totalSpent           Float
   transactionIds       String[]
   createdAt            DateTime      @default(now())
   updatedAt            DateTime      @updatedAt
-  outletId             String
-  outlet               Outlet        @relation("OutletCustomers", fields: [outletId], references: [id])
   transactions         Transaction[]
 }
 
