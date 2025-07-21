@@ -37,6 +37,9 @@ const initialExpenseFormState: Omit<Expense, 'id'> = {
   outlet: '',
 };
 
+// Key untuk localStorage draft
+const DRAFT_KEY = 'expenseDraft';
+
 export function ExpenseDialog({
   isOpen,
   onOpenChange,
@@ -56,21 +59,25 @@ export function ExpenseDialog({
   const [expenseCategories, setExpenseCategories] = useState<string[]>([]);
   const { toast } = useToast();
 
+  // Load draft dari localStorage saat form dibuka (hanya jika tambah baru)
   useEffect(() => {
     if (isOpen && !expense) {
-      // Untuk kasir, set outlet otomatis saat form baru
-      if (user?.role === 'cashier' && user.outletId) {
-        const outletObj = outlets.find(o => o.id === user.outletId);
-        setFormData({ ...initialExpenseFormState, outlet: outletObj ? outletObj.name : '' });
-      } else {
-        setFormData(initialExpenseFormState);
+      const saved = typeof window !== 'undefined' ? localStorage.getItem(DRAFT_KEY) : null;
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          setFormData({ ...initialExpenseFormState, ...parsed });
+        } catch {}
       }
-    } 
-    else if (isOpen && expense) {
-      const isNew = !expenseCategories.includes(expense.category);
-      setFormData({ ...expense, isNewCategory: isNew });
     }
-  }, [isOpen, expense, expenseCategories, user, outlets]);
+  }, [isOpen, expense]);
+
+  // Auto-save ke localStorage setiap formData berubah (hanya jika tambah baru)
+  useEffect(() => {
+    if (isOpen && !expense) {
+      localStorage.setItem(DRAFT_KEY, JSON.stringify(formData));
+    }
+  }, [formData, isOpen, expense]);
 
   useEffect(() => {
     if (isOpen) {
@@ -146,6 +153,8 @@ export function ExpenseDialog({
         }
         await addExpense(finalFormData, user);
         toast({ title: "Sukses", description: "Pengeluaran berhasil ditambahkan" });
+        // Hapus draft setelah sukses
+        if (typeof window !== 'undefined') localStorage.removeItem(DRAFT_KEY);
       }
       onSaveSuccess?.();
       onOpenChange(false);
