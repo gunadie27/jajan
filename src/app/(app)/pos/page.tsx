@@ -674,6 +674,22 @@ export default function POSPage() {
         await fetchCustomers();
         
         setIsInitialized(true);
+        
+        // Prefetch data untuk performa lebih baik di production
+        if (process.env.NODE_ENV === 'production') {
+          // Prefetch data yang mungkin diperlukan dengan delay yang lebih pendek
+          setTimeout(() => {
+            getProducts(); // Warm up cache
+            getOutlets(); // Warm up cache
+            getPlatformSettings(); // Warm up cache
+            getDiscounts(); // Warm up cache
+          }, 500); // Lebih cepat dari 1000ms
+          
+          // Second prefetch untuk memastikan cache tetap warm
+          setTimeout(() => {
+            getProducts(); // Keep cache warm
+          }, 5000);
+        }
       } catch (error) {
         console.error('Error fetching initial data:', error);
         toast({

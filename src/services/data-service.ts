@@ -72,8 +72,10 @@ export async function getProducts(): Promise<Product[]> {
     const cache = global[cacheKey];
     const now = Date.now();
     
-    // Cache valid selama 30 detik
-    if (cache && (now - cache.timestamp) < 30000) {
+    // Cache valid lebih lama di production untuk mengatasi latency tinggi
+    const cacheDuration = process.env.NODE_ENV === 'production' ? 120000 : 30000; // 2 menit di production, 30 detik di development
+    
+    if (cache && (now - cache.timestamp) < cacheDuration) {
         console.log('✅ Using cached products data');
         return cache.data;
     }

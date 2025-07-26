@@ -455,8 +455,7 @@ function ProductForm({
   );
 }
 
-
-export default function ManageProductsPage() {
+export default function ManajemenProdukPage() {
   const { user } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
   const [productCategories, setProductCategories] = useState<string[]>([]);
@@ -467,37 +466,30 @@ export default function ManageProductsPage() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadingMessage, setLoadingMessage] = useState('Memuat data produk...');
   const { toast } = useToast();
 
   useEffect(() => {
-    async function fetchData() {
-      if (!user) return;
-      
-      setIsLoading(true);
+    const loadProducts = async () => {
       try {
-        const [fetchedProducts, fetchedCategories, fetchedChannels, fetchedSettings] = await Promise.all([
-          getProducts(),
-          getProductCategories(),
-          getOrderChannels(),
-          getPlatformSettings()
-        ]);
-        setProducts(fetchedProducts);
-        setProductCategories(fetchedCategories.map(c => c.name));
-        setOrderChannels(fetchedChannels);
-        setPlatformSettings(fetchedSettings);
+        setLoadingMessage('Menghubungkan ke database...');
+        const data = await getProducts();
+        setProducts(data);
+        setLoadingMessage('Menyiapkan tampilan...');
       } catch (error) {
-        console.error('Error fetching data:', error);
+        console.error('Error loading products:', error);
         toast({
           variant: "destructive",
           title: "Error",
-          description: "Gagal mengambil data produk"
+          description: "Gagal memuat data produk"
         });
       } finally {
         setIsLoading(false);
       }
-    }
-    fetchData();
-  }, [user, toast]);
+    };
+
+    loadProducts();
+  }, [toast]);
 
   const handleMarkupChange = (channel: OrderChannel, value: string) => {
     const markup = Number(value);
@@ -712,7 +704,7 @@ export default function ManageProductsPage() {
                     <TableCell colSpan={8} className="py-8 text-center">
                       <div className="flex flex-col items-center gap-2">
                         <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
-                        <span className="text-sm text-muted-foreground">Memuat produk...</span>
+                        <span className="text-sm text-muted-foreground">{loadingMessage}</span>
                       </div>
                     </TableCell>
                   </TableRow>
