@@ -45,26 +45,49 @@ export default function DashboardPage() {
     if (isLoading || !user) return;
     setError(null);
     setIsDataLoading(true);
+    
     const fetchData = async () => {
       try {
-        const fetchedOutlets = await getOutlets();
-        setAllOutlets(fetchedOutlets);
-        if (!selectedOutlet && fetchedOutlets.length > 0 && user) {
-          setSelectedOutlet(user.role === 'cashier' && user.outletId ? user.outletId : fetchedOutlets[0].id);
+        // Fetch outlets hanya sekali jika belum ada
+        if (allOutlets.length === 0) {
+          const fetchedOutlets = await getOutlets();
+          setAllOutlets(fetchedOutlets);
+          
+          // Set selectedOutlet hanya jika belum ada
+          if (!selectedOutlet && fetchedOutlets.length > 0 && user) {
+            const defaultOutlet = user.role === 'cashier' && user.outletId ? user.outletId : fetchedOutlets[0].id;
+            setSelectedOutlet(defaultOutlet);
+            return; // Exit early, akan trigger useEffect lagi dengan selectedOutlet baru
+          }
         }
+        
+        // Fetch transactions dan expenses berdasarkan outlet
         let transactions: Transaction[] = [];
         let expenses: Expense[] = [];
         let currentOutletId: string | undefined = undefined;
+        
         if (user) {
           currentOutletId = user.role === 'cashier' && user.outletId ? user.outletId : selectedOutlet;
         }
+        
         if (currentOutletId) {
-          transactions = await getTransactions(currentOutletId);
-          expenses = await getExpenses(currentOutletId);
+          // Fetch data secara parallel untuk performa lebih baik
+          const [transactionsData, expensesData] = await Promise.all([
+            getTransactions(currentOutletId),
+            getExpenses(currentOutletId)
+          ]);
+          transactions = transactionsData;
+          expenses = expensesData;
         } else {
-          transactions = await getTransactions();
-          expenses = await getExpenses();
+          // Fetch semua data jika tidak ada outlet yang dipilih
+          const [transactionsData, expensesData] = await Promise.all([
+            getTransactions(),
+            getExpenses()
+          ]);
+          transactions = transactionsData;
+          expenses = expensesData;
         }
+        
         setAllTransactions(transactions);
         setAllExpenses(expenses);
       } catch (err: any) {
@@ -74,8 +97,9 @@ export default function DashboardPage() {
         setIsDataLoading(false);
       }
     };
+    
     fetchData();
-  }, [user, selectedOutlet, isLoading]);
+  }, [user, selectedOutlet, isLoading, allOutlets.length]); // Tambahkan allOutlets.length untuk dependency
 
   const filteredTransactions = useMemo(() => {
     return allTransactions.filter((transaction) => {

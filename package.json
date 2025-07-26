@@ -18,10 +18,12 @@
     "seed": "tsx prisma/seed.ts"
   },
   "browserslist": [
-    "last 2 versions",
-    "not dead",
-    "not ie 11",
-    "not ie_mob 11"
+    "Chrome >= 90",
+    "Firefox >= 88",
+    "Safari >= 14",
+    "Edge >= 90",
+    "iOS >= 14.5",
+    "Android >= 90"
   ],
   "dependencies": {
     "@genkit-ai/googleai": "^1.13.0",

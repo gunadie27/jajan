@@ -30,7 +30,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { MoreHorizontal, PlusCircle, Trash2, Upload, ShoppingBag, Infinity, Percent, ChevronRight, X, Pencil, Settings, RefreshCw } from "lucide-react";
+import { MoreHorizontal, PlusCircle, Trash2, Upload, ShoppingBag, Infinity, Percent, ChevronRight, X, Pencil, Settings } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import type { Product, PlatformSettings, OrderChannel } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
@@ -467,7 +467,6 @@ export default function ManageProductsPage() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [isRefreshing, setIsRefreshing] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -605,27 +604,6 @@ export default function ManageProductsPage() {
     }
   };
 
-  const handleRefresh = async () => {
-    setIsRefreshing(true);
-    try {
-      const refreshedProducts = await getProducts();
-      setProducts(refreshedProducts);
-      toast({
-        title: "Produk Diperbarui",
-        description: "Data produk berhasil diperbarui dari database."
-      });
-    } catch (error) {
-      console.error('Error refreshing products:', error);
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: "Gagal memperbarui data produk."
-      });
-    } finally {
-      setIsRefreshing(false);
-    }
-  };
-
   const filteredProducts = products.filter(product => {
     const matchCategory = selectedCategory === "all" || product.category === selectedCategory;
     const matchSearch = product.name.toLowerCase().includes(searchTerm.toLowerCase());
@@ -688,14 +666,6 @@ export default function ManageProductsPage() {
           <Button onClick={handleAddNew} className="bg-primary text-white hover:bg-primary/90 rounded-lg px-4 py-2 text-xs sm:text-sm flex items-center gap-2">
             <PlusCircle className="h-4 w-4" />
             Tambah Produk
-          </Button>
-          <Button variant="outline" onClick={handleRefresh} className="rounded-lg px-4 py-2 text-xs sm:text-sm flex items-center gap-2" disabled={isRefreshing}>
-            <RefreshCw className="h-4 w-4 text-primary" />
-            {isRefreshing ? (
-              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
-            ) : (
-              "Refresh"
-            )}
           </Button>
         </div>
       </div>

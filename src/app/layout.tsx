@@ -45,8 +45,16 @@ export default function RootLayout({
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <link rel="icon" href="/favicon.ico" />
         
+        {/* Preconnect untuk origins penting */}
+        <link rel="preconnect" href="https://app.maujajan.id" />
+        <link rel="preconnect" href="https://geqebteyoseuvcmpvimp.supabase.co" />
+        <link rel="dns-prefetch" href="https://placehold.co" />
+        
         {/* Preload critical CSS */}
         <link rel="preload" href="/globals.css" as="style" />
+        
+        {/* Preload critical images */}
+        <link rel="preload" href="/favicon.ico" as="image" type="image/x-icon" />
         
         {/* DNS prefetch untuk external resources */}
         <link rel="dns-prefetch" href="//fonts.googleapis.com" />

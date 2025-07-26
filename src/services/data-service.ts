@@ -66,6 +66,18 @@ const productSchema = z.object({
 // --- Product Service ---
 export async function getProducts(): Promise<Product[]> {
     console.log('🔄 Fetching products from database...');
+    
+    // Gunakan cache untuk mengurangi query berulang
+    const cacheKey = 'products_cache';
+    const cache = global[cacheKey];
+    const now = Date.now();
+    
+    // Cache valid selama 30 detik
+    if (cache && (now - cache.timestamp) < 30000) {
+        console.log('✅ Using cached products data');
+        return cache.data;
+    }
+    
     const products = await prisma.product.findMany({
         include: {
             variants: true,
@@ -80,12 +92,20 @@ export async function getProducts(): Promise<Product[]> {
     console.log(`✅ Fetched ${products.length} products from database`);
     
     // Transform data to match Product type
-    return products.map(product => ({
+    const transformedProducts = products.map(product => ({
         ...product,
         category: product.category?.name || 'Unknown Category', // Extract category name
         categoryId: product.categoryId?.toString(), // Ensure categoryId is string
         outlet: product.outlet?.name || null // Extract outlet name
     })) as Product[];
+    
+    // Simpan ke cache
+    global[cacheKey] = {
+        data: transformedProducts,
+        timestamp: now
+    };
+    
+    return transformedProducts;
 }
 
 export async function getProductCategories(): Promise<{ id: string; name: string }[]> {
@@ -156,12 +176,17 @@ export async function addProduct(productData: Omit<Product, 'id'> & { categoryId
     });
     
     // Transform data to match Product type
-    return {
+    const result = {
         ...newProduct,
         category: newProduct.category?.name || 'Unknown Category',
         categoryId: newProduct.categoryId?.toString(),
         outlet: newProduct.outlet?.name || null
     } as Product;
+    
+    // Invalidate cache
+    delete global['products_cache'];
+    
+    return result;
 }
 
 export async function updateProduct(productId: string, productData: Omit<Product, 'id'>): Promise<Product> {
@@ -275,6 +300,10 @@ export async function updateProduct(productId: string, productData: Omit<Product
             }
         }
     }
+    
+    // Invalidate cache
+    delete global['products_cache'];
+    
     // Transform data to match Product type
     const result = {
         ...updatedProduct,
@@ -289,6 +318,9 @@ export async function updateProduct(productId: string, productData: Omit<Product
 
 export async function deleteProduct(productId: string): Promise<void> {
     await prisma.product.delete({ where: { id: productId } });
+    
+    // Invalidate cache
+    delete global['products_cache'];
 }
 
 export async function updateProductStock(productId: string, variantId: string, quantityChange: number): Promise<ProductVariant> {

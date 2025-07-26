@@ -21,7 +21,9 @@ import type { OrderItem, Product, ProductVariant, Transaction, Customer, OrderCh
 import { X, Plus, Minus, CreditCard, ScanLine, CheckCircle, Printer, ClipboardList, ShoppingBag, Send, Handshake, Store, Utensils, Bike, ShoppingCart, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
-import { Receipt } from "@/components/receipt";
+import { useCustomerStore } from '@/store/customerStore';
+import { useCashierSession } from "@/hooks/use-cashier-session";
+import dynamic from 'next/dynamic';
 import { 
     getProducts, 
     getCustomers, 
@@ -40,10 +42,22 @@ import {
 } from "@/services/data-service";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import { useCustomerStore } from '@/store/customerStore';
-import { useCashierSession } from "@/hooks/use-cashier-session";
-import { SessionWarning } from "@/components/session-warning";
-import QrScanner from "@/components/qr-scanner";
+
+// Dynamic imports untuk komponen yang tidak kritis
+const QrScanner = dynamic(() => import("@/components/qr-scanner"), {
+  loading: () => <div className="flex items-center justify-center p-4">Loading QR Scanner...</div>,
+  ssr: false
+});
+
+const Receipt = dynamic(() => import("@/components/receipt").then(mod => ({ default: mod.Receipt })), {
+  loading: () => <div className="flex items-center justify-center p-4">Loading Receipt...</div>,
+  ssr: false
+});
+
+const SessionWarning = dynamic(() => import("@/components/session-warning").then(mod => ({ default: mod.SessionWarning })), {
+  loading: () => <div className="flex items-center justify-center p-4">Loading Session Warning...</div>,
+  ssr: false
+});
 
 // Tipe untuk diskon yang diaplikasikan
 type AppliedDiscount = {
@@ -635,25 +649,31 @@ export default function POSPage() {
     setFormattedCashReceived(numValue.toLocaleString('id-ID'));
   };
 
+  // Fetch initial data
   useEffect(() => {
-    if (isInitialized) return; // Prevent multiple fetches
+    if (!user || isInitialized) return;
     
     async function fetchData() {
       try {
         setIsLoading(true);
+        
+        // Fetch data secara parallel untuk performa lebih baik
         const [productsData, outletsData, platformSettingsData, discountsData] = await Promise.all([
-            getProducts(),
+          getProducts(),
           getOutlets(),
-            getPlatformSettings(),
+          getPlatformSettings(),
           getDiscounts()
         ]);
+        
         setProducts(productsData);
-        await fetchCustomers(); // Menggunakan customer store
         setOutlets(outletsData);
         setPlatformSettings(platformSettingsData);
         setActiveDiscounts(discountsData.filter(d => d.isActive));
+        
+        // Fetch customers terpisah karena menggunakan store
+        await fetchCustomers();
+        
         setIsInitialized(true);
-
       } catch (error) {
         console.error('Error fetching initial data:', error);
         toast({
@@ -665,8 +685,9 @@ export default function POSPage() {
         setIsLoading(false);
       }
     }
+    
     fetchData();
-  }, [fetchCustomers, isInitialized]);
+  }, [user, isInitialized, fetchCustomers]); // Hapus fetchCustomers dari dependency untuk mencegah infinite loop
 
   // Update customers state when customerStore changes
   useEffect(() => {
@@ -793,7 +814,7 @@ export default function POSPage() {
       setProducts(updatedProducts);
 
       // Update member discount usage jika ada diskon member yang digunakan
-      if (currentMember && appliedDiscount) {
+      if (currentMember && appliedDiscount && currentMember.memberId) {
         try {
           await updateMemberDiscountUsage(currentMember.memberId);
         } catch (error) {

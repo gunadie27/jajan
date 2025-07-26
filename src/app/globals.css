@@ -1,18 +1,29 @@
+/* Critical CSS - Load first */
 @tailwind base;
 @tailwind components;
+
+/* Critical styles for above-the-fold content */
+@layer base {
+  html,
+  body {
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    overflow-x: hidden;
+  }
+  
+  body {
+    font-family: var(--font-pt-sans), sans-serif;
+    @apply bg-background text-foreground;
+  }
+  
+  * {
+    @apply border-border;
+  }
+}
+
+/* Non-critical CSS - Load after */
 @tailwind utilities;
-
-html,
-body {
-  width: 100%;
-  margin: 0;
-  padding: 0;
-  overflow-x: hidden; /* Prevent horizontal scroll */
-}
-
-body {
-  font-family: var(--font-pt-sans), sans-serif;
-}
 
 @layer base {
   :root {
@@ -83,15 +94,6 @@ body {
     --sidebar-accent-foreground: 0 0% 98%;
     --sidebar-border: 240 3.7% 15.9%;
     --sidebar-ring: 231 48% 48%;
-  }
-}
-
-@layer base {
-  * {
-    @apply border-border;
-  }
-  body {
-    @apply bg-background text-foreground;
   }
 }
 
