@@ -65,6 +65,7 @@ const productSchema = z.object({
 
 // --- Product Service ---
 export async function getProducts(): Promise<Product[]> {
+    console.log('🔄 Fetching products from database...');
     const products = await prisma.product.findMany({
         include: {
             variants: true,
@@ -75,6 +76,8 @@ export async function getProducts(): Promise<Product[]> {
             createdAt: 'asc'
         }
     });
+    
+    console.log(`✅ Fetched ${products.length} products from database`);
     
     // Transform data to match Product type
     return products.map(product => ({
@@ -162,6 +165,7 @@ export async function addProduct(productData: Omit<Product, 'id'> & { categoryId
 }
 
 export async function updateProduct(productId: string, productData: Omit<Product, 'id'>): Promise<Product> {
+    console.log('🔄 Updating product in database:', productId);
     const { name, category, categoryId, imageUrl, variants, outletId } = productData;
 
     // Ambil data produk lama
@@ -272,12 +276,15 @@ export async function updateProduct(productId: string, productData: Omit<Product
         }
     }
     // Transform data to match Product type
-    return {
+    const result = {
         ...updatedProduct,
         category: updatedProduct.category?.name || 'Unknown Category',
         categoryId: updatedProduct.categoryId?.toString(),
         outlet: updatedProduct.outlet?.name || null
     } as Product;
+    
+    console.log('✅ Product updated successfully:', result.name);
+    return result;
 }
 
 export async function deleteProduct(productId: string): Promise<void> {

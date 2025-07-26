@@ -30,7 +30,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { MoreHorizontal, PlusCircle, Trash2, Upload, ShoppingBag, Infinity, Percent, ChevronRight, X, Pencil, Settings } from "lucide-react";
+import { MoreHorizontal, PlusCircle, Trash2, Upload, ShoppingBag, Infinity, Percent, ChevronRight, X, Pencil, Settings, RefreshCw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import type { Product, PlatformSettings, OrderChannel } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
@@ -467,6 +467,7 @@ export default function ManageProductsPage() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -538,7 +539,11 @@ export default function ManageProductsPage() {
   const handleDelete = async (productId: string) => {
     try {
       await deleteProduct(productId);
-      setProducts(products.filter(p => p.id !== productId));
+      
+      // Refresh products from database to get latest data
+      const refreshedProducts = await getProducts();
+      setProducts(refreshedProducts);
+      
       toast({
         title: "Sukses",
         description: "Produk berhasil dihapus"
@@ -570,8 +575,12 @@ export default function ManageProductsPage() {
           ...productData,
           categoryId: productData.categoryId // Ensure categoryId is sent for update
         };
-        const updated = await updateProduct(editingProduct.id, updateData);
-        setProducts(products.map(p => p.id === editingProduct.id ? updated : p));
+        await updateProduct(editingProduct.id, updateData);
+        
+        // Refresh products from database to get latest data
+        const refreshedProducts = await getProducts();
+        setProducts(refreshedProducts);
+        
         toast({
           title: "Sukses",
           description: "Produk berhasil diperbarui"
@@ -593,6 +602,27 @@ export default function ManageProductsPage() {
         title: "Error",
         description: "Gagal menyimpan produk"
       });
+    }
+  };
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      const refreshedProducts = await getProducts();
+      setProducts(refreshedProducts);
+      toast({
+        title: "Produk Diperbarui",
+        description: "Data produk berhasil diperbarui dari database."
+      });
+    } catch (error) {
+      console.error('Error refreshing products:', error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Gagal memperbarui data produk."
+      });
+    } finally {
+      setIsRefreshing(false);
     }
   };
 
@@ -654,10 +684,20 @@ export default function ManageProductsPage() {
       </Card>
           </DialogContent>
         </Dialog>
-        <Button onClick={handleAddNew} className="bg-primary text-white hover:bg-primary/90 rounded-lg px-4 py-2 text-xs sm:text-sm flex items-center gap-2">
-          <PlusCircle className="h-4 w-4" />
-          Tambah Produk
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button onClick={handleAddNew} className="bg-primary text-white hover:bg-primary/90 rounded-lg px-4 py-2 text-xs sm:text-sm flex items-center gap-2">
+            <PlusCircle className="h-4 w-4" />
+            Tambah Produk
+          </Button>
+          <Button variant="outline" onClick={handleRefresh} className="rounded-lg px-4 py-2 text-xs sm:text-sm flex items-center gap-2" disabled={isRefreshing}>
+            <RefreshCw className="h-4 w-4 text-primary" />
+            {isRefreshing ? (
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
+            ) : (
+              "Refresh"
+            )}
+          </Button>
+        </div>
       </div>
       {/* Filter/Search Section */}
       <div className="flex gap-2 overflow-x-auto no-scrollbar px-2 sm:px-4 pb-2 -mx-2 mb-2">
