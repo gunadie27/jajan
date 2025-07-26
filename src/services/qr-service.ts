@@ -1,16 +1,15 @@
 import QRCode from 'qrcode';
 import { createClient } from '@supabase/supabase-js';
 
-// Inisialisasi Supabase client
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-const supabase = createClient(supabaseUrl, supabaseKey);
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+
+const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 export interface MemberQRData {
   memberId: string;
   name: string;
-  phone?: string;
-  email?: string;
+  phone: string;
 }
 
 export class QRService {
@@ -22,16 +21,16 @@ export class QRService {
    */
   static async generateMemberQR(memberData: MemberQRData): Promise<string> {
     try {
-      console.log('🔧 QRService: generateMemberQR called with:', memberData);
-      
-      const fileName = `member-${memberData.memberId}.png`;
-      const filePath = `${this.folderName}/${fileName}`;
-      
-      console.log('📁 QRService: File path:', filePath);
-      
-      // Generate QR code sebagai buffer
-      console.log('🔄 QRService: Generating QR buffer...');
-      const qrBuffer = await QRCode.toBuffer(JSON.stringify(memberData), {
+      // Generate QR code data (JSON string)
+      const qrData = JSON.stringify({
+        memberId: memberData.memberId,
+        name: memberData.name,
+        phone: memberData.phone,
+        timestamp: new Date().toISOString()
+      });
+
+      // Generate QR code image
+      const qrCodeBuffer = await QRCode.toBuffer(qrData, {
         type: 'image/png',
         width: 300,
         margin: 2,
@@ -40,65 +39,47 @@ export class QRService {
           light: '#FFFFFF'
         }
       });
-      console.log('✅ QRService: QR buffer generated, size:', qrBuffer.length);
 
       // Upload ke Supabase Storage
-      console.log('📤 QRService: Uploading to Supabase...');
+      const fileName = `member-${memberData.memberId}.png`;
+      const filePath = `${this.folderName}/${fileName}`;
+
       const { data, error } = await supabase.storage
         .from(this.bucketName)
-        .upload(filePath, qrBuffer, {
+        .upload(filePath, qrCodeBuffer, {
           contentType: 'image/png',
-          upsert: true // Overwrite jika sudah ada
+          upsert: true // Overwrite jika file sudah ada
         });
 
       if (error) {
-        console.error('❌ QRService: Error uploading QR code:', error);
         throw new Error(`Failed to upload QR code: ${error.message}`);
       }
 
-      console.log('✅ QRService: Upload successful');
-
-      // Dapatkan public URL
-      console.log('🔗 QRService: Getting public URL...');
-      const { data: urlData } = supabase.storage
-        .from(this.bucketName)
-        .getPublicUrl(filePath);
-
-      console.log('✅ QRService: Public URL:', urlData.publicUrl);
-      return urlData.publicUrl;
+      // Generate custom shortlink URL untuk production
+      const shortlinkUrl = `https://app.maujajan.id/qr/${memberData.memberId}`;
+      
+      return shortlinkUrl;
     } catch (error) {
-      console.error('❌ QRService: Error generating member QR:', error);
+      console.error('Error generating member QR code:', error);
       throw error;
     }
   }
 
   /**
-   * Dapatkan URL QR code member (jika sudah ada)
+   * Dapatkan URL QR code yang sudah ada
    */
   static async getMemberQRUrl(memberId: string): Promise<string | null> {
     try {
       const fileName = `member-${memberId}.png`;
       const filePath = `${this.folderName}/${fileName}`;
 
-      // Cek apakah file sudah ada
-      const { data: files, error } = await supabase.storage
+      const { data } = await supabase.storage
         .from(this.bucketName)
-        .list(this.folderName, {
-          search: fileName
-        });
+        .getPublicUrl(filePath);
 
-      if (error) {
-        console.error('Error checking QR code:', error);
-        return null;
-      }
-
-      if (files && files.length > 0) {
-        // File sudah ada, return public URL
-        const { data: urlData } = supabase.storage
-          .from(this.bucketName)
-          .getPublicUrl(filePath);
-        
-        return urlData.publicUrl;
+      if (data.publicUrl) {
+        // Return custom shortlink URL untuk production
+        return `https://app.maujajan.id/qr/${memberId}`;
       }
 
       return null;
@@ -109,36 +90,38 @@ export class QRService {
   }
 
   /**
-   * Generate atau dapatkan QR code URL untuk member
+   * Generate atau dapatkan QR code URL (generate jika belum ada)
    */
   static async getOrGenerateMemberQR(memberData: MemberQRData): Promise<string> {
     try {
-      console.log('🔧 QRService: getOrGenerateMemberQR called with:', memberData);
-      
-      // Cek apakah QR code sudah ada
+      // Coba ambil URL yang sudah ada
       const existingUrl = await this.getMemberQRUrl(memberData.memberId);
-      console.log('🔍 QRService: Existing URL check result:', existingUrl);
-      
       if (existingUrl) {
-        console.log('✅ QRService: Using existing QR code');
         return existingUrl;
       }
 
-      console.log('🔄 QRService: Generating new QR code');
-      // Generate QR code baru
+      // Generate QR code baru jika belum ada
       return await this.generateMemberQR(memberData);
     } catch (error) {
-      console.error('❌ QRService: Error in getOrGenerateMemberQR:', error);
+      console.error('Error in getOrGenerateMemberQR:', error);
       throw error;
     }
   }
 
   /**
-   * Parse QR code data dari string JSON
+   * Parse data QR code
    */
   static parseMemberData(qrData: string): MemberQRData | null {
     try {
-      return JSON.parse(qrData) as MemberQRData;
+      const data = JSON.parse(qrData);
+      if (data.memberId && data.name && data.phone) {
+        return {
+          memberId: data.memberId,
+          name: data.name,
+          phone: data.phone
+        };
+      }
+      return null;
     } catch (error) {
       console.error('Error parsing member QR data:', error);
       return null;
