@@ -79,6 +79,13 @@ export function ExpenseDialog({
     }
   }, [formData, isOpen, expense]);
 
+  // Reset formData ke kosong setiap kali dialog tambah pengeluaran dibuka
+  useEffect(() => {
+    if (isOpen && !expense) {
+      setFormData(initialExpenseFormState);
+    }
+  }, [isOpen, expense]);
+
   useEffect(() => {
     if (isOpen) {
       async function fetchData() {
