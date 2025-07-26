@@ -41,9 +41,7 @@ export default function ManageCustomersPage() {
   const fetchCustomers = useCustomerStore(state => state.fetchCustomers);
   const updateCustomer = useCustomerStore(state => state.updateCustomer);
   const [allTransactions, setAllTransactions] = useState<Transaction[]>([]);
-  const [outlets, setOutlets] = useState<Outlet[]>([]);
   const [searchTerm, setSearchTerm] = useState<string>("");
-  const [selectedOutlet, setSelectedOutlet] = useState<string>("all");
   const [isFormOpen, setIsFormOpen] = useState<boolean>(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -55,12 +53,8 @@ export default function ManageCustomersPage() {
       setIsLoading(true);
       try {
         await fetchCustomers();
-        const [tx, fetchedOutlets] = await Promise.all([
-          dataService.getTransactions(),
-          dataService.getOutlets()
-        ]);
+        const tx = await dataService.getTransactions();
         setAllTransactions(tx);
-        setOutlets(fetchedOutlets);
       } catch (error) {
         console.error('Error fetching data:', error);
         toast({
@@ -140,16 +134,10 @@ export default function ManageCustomersPage() {
           if (!matchesName && !matchesPhone) return false;
         }
         
-        // Outlet filter
-        if (selectedOutlet !== 'all') {
-          const outletName = outlets.find(o => o.id === selectedOutlet)?.name;
-          if (customer.outletName !== outletName) return false;
-        }
-        
         return true;
       })
       .sort((a: Customer, b: Customer) => new Date(b.lastTransactionDate).getTime() - new Date(a.lastTransactionDate).getTime());
-  }, [customers, searchTerm, selectedOutlet, outlets]);
+  }, [customers, searchTerm]);
 
   const getCustomerStats = (customer: Customer) => {
     const customerTransactions = allTransactions.filter(t => t.customerId === customer.id);
@@ -176,22 +164,7 @@ export default function ManageCustomersPage() {
           onChange={(e) => setSearchTerm(e.target.value)}
           className="rounded-lg shadow bg-white px-3 py-2 w-full md:w-auto max-w-sm text-xs sm:text-sm"
         />
-        <Select value={selectedOutlet} onValueChange={setSelectedOutlet}>
-          <SelectTrigger className="min-w-[150px] max-w-[200px] text-xs sm:text-sm">
-            <SelectValue placeholder="Pilih Outlet" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Semua Outlet</SelectItem>
-            {outlets.map((outlet) => (
-              <SelectItem key={outlet.id} value={outlet.id}>
-                <div className="flex items-center gap-2">
-                  <Building2 className="h-3 w-3" />
-                  {outlet.name}
-                </div>
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+
       </div>
       {/* Tabel Pelanggan Section */}
       <Card className="rounded-xl !border-0 border-0 !shadow-none shadow-none p-2 sm:p-4 md:p-6 w-full">
@@ -202,7 +175,7 @@ export default function ManageCustomersPage() {
                 <TableRow>
                   <TableHead className="py-2 px-2 font-semibold text-xs">Nama Pelanggan</TableHead>
                   <TableHead className="py-2 px-2 font-semibold text-xs">Nomor WhatsApp</TableHead>
-                  <TableHead className="py-2 px-2 font-semibold text-xs">Asal Pelanggan</TableHead>
+                  <TableHead className="py-2 px-2 font-semibold text-xs">Status Member</TableHead>
                   <TableHead className="py-2 px-2 font-semibold text-xs">Kunjungan Terakhir</TableHead>
                   <TableHead className="py-2 px-2 font-semibold text-xs">Total Transaksi</TableHead>
                   <TableHead className="py-2 px-2 font-semibold text-xs text-right">Total Belanja</TableHead>
@@ -233,8 +206,8 @@ export default function ManageCustomersPage() {
                         <TableCell className="py-2 px-2 font-medium text-xs">{customer.name}</TableCell>
                         <TableCell className="py-2 px-2 text-xs">{customer.phoneNumber}</TableCell>
                         <TableCell className="py-2 px-2 text-xs">
-                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                            {customer.outletName || 'Outlet Tidak Dikenal'}
+                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                            Member
                           </span>
                         </TableCell>
                         <TableCell className="py-2 px-2 text-xs">{new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium' }).format(new Date(customer.lastTransactionDate))}</TableCell>

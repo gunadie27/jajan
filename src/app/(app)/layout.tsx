@@ -26,16 +26,16 @@ function UserNav({ logout, user }: { logout: () => void; user: { name: string, e
         <DropdownMenuTrigger asChild>
           <Button variant="ghost" className="relative h-9 w-9 rounded-full border-2 border-primary/70 dark:border-white hover:shadow-lg transition-all">
             <Avatar className="h-9 w-9">
-              <AvatarImage src="/avatars/01.png" alt={user.name} />
-              <AvatarFallback className="text-primary dark:text-white bg-background">{user.name.charAt(0)}</AvatarFallback>
+              <AvatarImage src="/avatars/01.png" alt={user?.name || 'User'} />
+              <AvatarFallback className="text-primary dark:text-white bg-background">{user?.name?.charAt(0) || 'U'}</AvatarFallback>
             </Avatar>
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent className="w-56" align="end" forceMount>
           <DropdownMenuLabel className="font-normal">
             <div className="flex flex-col space-y-1">
-              <p className="text-sm font-medium leading-none capitalize text-primary dark:text-white">{user.name}</p>
-              <p className="text-xs leading-none text-foreground dark:text-white">{user.email}</p>
+              <p className="text-sm font-medium leading-none capitalize text-primary dark:text-white">{user?.name || 'User'}</p>
+              <p className="text-xs leading-none text-foreground dark:text-white">{user?.email || 'user@example.com'}</p>
             </div>
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
@@ -189,6 +189,10 @@ function MainNav({ userRole, closeSheet }: { userRole: string, closeSheet?: () =
                                 <Users className="h-4 w-4" />
                                 Pengguna
                             </SidebarNavItem>
+                            <SidebarNavItem href="/discount" active={isActive('/discount')} onClick={closeSheet}>
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
+                                Diskon
+                            </SidebarNavItem>
                         </div>
                     </>
                 )}
@@ -207,6 +211,7 @@ function MainNav({ userRole, closeSheet }: { userRole: string, closeSheet?: () =
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { user, isLoading, logout } = useAuth();
   const [isSheetOpen, setIsSheetOpen] = React.useState(false);
+  const pathname = usePathname();
 
   if (isLoading) {
     return (
@@ -283,7 +288,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <div className="relative flex-1 flex justify-center items-end" style={{zIndex:2}}>
             <a
               href="/pos"
-              className={`absolute -top-12 left-1/2 -translate-x-1/2 flex flex-col items-center justify-center w-16 h-16 rounded-full shadow-xl border-4 border-white dark:border-background bg-gradient-to-br from-primary via-blue-500 to-purple-500 transition-all duration-200 ${usePathname() === '/pos' ? 'scale-110' : 'scale-100'} ${usePathname() === '/pos' ? 'ring-4 ring-primary/30' : ''}`}
+              className={`absolute -top-12 left-1/2 -translate-x-1/2 flex flex-col items-center justify-center w-16 h-16 rounded-full shadow-xl border-4 border-white dark:border-background bg-gradient-to-br from-primary via-blue-500 to-purple-500 transition-all duration-200 ${pathname === '/pos' ? 'scale-110' : 'scale-100'} ${pathname === '/pos' ? 'ring-4 ring-primary/30' : ''}`}
               style={{boxShadow:'0 4px 24px 0 rgba(31,38,135,0.18)'}}
             >
               <ShoppingBag className="h-8 w-8 text-white drop-shadow" />
@@ -315,13 +320,13 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
                   <PopoverContent align="end" side="top" className="w-64 p-4 rounded-xl shadow-xl border-0 bg-gradient-to-br from-blue-50 via-white to-purple-100">
                     <div className="flex flex-col items-center gap-2">
                       <Avatar className="h-12 w-12">
-                        <AvatarImage src="/avatars/01.png" alt={user.name} />
-                        <AvatarFallback className="text-primary dark:text-white bg-background">{user.name.charAt(0)}</AvatarFallback>
+                        <AvatarImage src="/avatars/01.png" alt={user?.name || 'User'} />
+                        <AvatarFallback className="text-primary dark:text-white bg-background">{user?.name?.charAt(0) || 'U'}</AvatarFallback>
                       </Avatar>
                       <div className="text-center">
-                        <p className="text-base font-bold leading-none capitalize text-primary dark:text-white">{user.name}</p>
-                        <p className="text-xs leading-none text-foreground dark:text-white">{user.email}</p>
-                        <span className="inline-block mt-1 px-2 py-0.5 rounded-full bg-primary/10 text-primary text-xs font-semibold capitalize">{user.role}</span>
+                        <p className="text-base font-bold leading-none capitalize text-primary dark:text-white">{user?.name || 'User'}</p>
+                        <p className="text-xs leading-none text-foreground dark:text-white">{user?.email || 'user@example.com'}</p>
+                        <span className="inline-block mt-1 px-2 py-0.5 rounded-full bg-primary/10 text-primary text-xs font-semibold capitalize">{user?.role || 'user'}</span>
                       </div>
                       <button onClick={logout} className="mt-3 w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-destructive text-white font-semibold shadow hover:bg-destructive/90 transition-all">
                         <LogOut className="h-4 w-4" /> Keluar

@@ -6,8 +6,16 @@ export async function POST(request: NextRequest) {
   console.log('API /manajemenproduk dipanggil');
   try {
     const body = await request.json();
-    // Sementara, user mock (ganti dengan session user jika sudah ada auth)
-    const user = { id: 'mock-id', name: 'Mock User', username: 'mockuser', email: 'mock@user.com', role: 'owner' as UserRole, outletId: body.outletId };
+    // Mock user untuk owner
+    const user = { 
+      id: 'mock-id', 
+      name: 'Mock User', 
+      username: 'mockuser', 
+      email: 'mock@user.com', 
+      role: 'owner' as UserRole, 
+      outletId: null // Owner tidak terikat outlet
+    };
+    
     const result = await addProduct(body, user);
     return NextResponse.json({ success: true, product: result });
   } catch (error) {

@@ -34,9 +34,6 @@ async function main() {
     await prisma.cashierSession.deleteMany({ where: { outletId: outlet.id } });
     await prisma.user.deleteMany({ where: { outletId: outlet.id } });
 
-    // Hapus customer yang terkait outlet (tambahan karena ada foreign key)
-    await prisma.customer.deleteMany({ where: { outletId: outlet.id } });
-
     // Hapus product yang terkait outlet (tambahan karena ada foreign key)
     await prisma.product.deleteMany({ where: { outletId: outlet.id } });
 
@@ -56,7 +53,18 @@ async function main() {
   });
   console.log(`Created main outlet with id: ${mainOutlet.id}`);
 
-  // 4. Buat user baru
+  // 4. Buat kategori produk
+  const makananCategory = await prisma.productCategory.create({
+    data: { name: 'Makanan' }
+  });
+  console.log(`Created category: ${makananCategory.name}`);
+
+  const minumanCategory = await prisma.productCategory.create({
+    data: { name: 'Minuman' }
+  });
+  console.log(`Created category: ${minumanCategory.name}`);
+
+  // 5. Buat user baru
   const user = await prisma.user.create({
     data: {
       name: 'Admin Utama',
@@ -64,25 +72,19 @@ async function main() {
       username: 'owner',
       password: hashedPassword,
       role: 'owner',
-      outletId: mainOutlet.id,
+      // Owner tidak terikat outlet
     },
   });
   console.log(`Created user with id: ${user.id}`);
 
-  // 5. Buat beberapa produk contoh
-  // Cari kategori berdasarkan nama
-  const makananCategory = await prisma.productCategory.findFirst({ where: { name: 'Makanan' } });
-  const minumanCategory = await prisma.productCategory.findFirst({ where: { name: 'Minuman' } });
-  if (!makananCategory || !minumanCategory) {
-    throw new Error('Kategori Makanan/Minuman belum ada di database.');
-  }
+  // 6. Buat beberapa produk contoh
 
   const product1 = await prisma.product.create({
     data: {
       name: 'Nasi Goreng',
       category: { connect: { id: makananCategory.id } },
       imageUrl: '/images/nasi-goreng.jpg',
-      outlet: { connect: { id: mainOutlet.id } },
+      // Produk global, tidak terikat outlet
     },
   });
   console.log(`Created product with id: ${product1.id}`);
@@ -102,7 +104,7 @@ async function main() {
       name: 'Es Teh Manis',
       category: { connect: { id: minumanCategory.id } },
       imageUrl: '/images/es-teh.jpg',
-      outlet: { connect: { id: mainOutlet.id } },
+      // Produk global, tidak terikat outlet
     },
   });
   console.log(`Created product with id: ${product2.id}`);

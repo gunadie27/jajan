@@ -5,7 +5,7 @@ import type { Customer, User } from '@/lib/types';
 interface CustomerStore {
   customers: Customer[];
   fetchCustomers: () => Promise<void>;
-  addCustomer: (customerData: Omit<Customer, 'id'>, user: User) => Promise<Customer>;
+  addCustomer: (customerData: Omit<Customer, 'id'>) => Promise<Customer>;
   updateCustomer: (id: string, customerData: Partial<Omit<Customer, 'id'>>) => Promise<Customer>;
 }
 
@@ -15,8 +15,8 @@ export const useCustomerStore = create<CustomerStore>((set, get) => ({
     const data = await getCustomers();
     set({ customers: data });
   },
-  addCustomer: async (customerData, user) => {
-    const newCustomer = await addCustomerApi(customerData, user);
+  addCustomer: async (customerData) => {
+    const newCustomer = await addCustomerApi(customerData);
     set(state => ({ customers: [...state.customers, newCustomer] }));
     return newCustomer;
   },

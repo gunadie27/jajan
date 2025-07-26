@@ -15,7 +15,7 @@
  */
 'use server';
 
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '@/lib/db'; // Ganti impor PrismaClient
 import bcrypt from 'bcrypt';
 import type { 
     Product, 
@@ -35,7 +35,7 @@ import { z } from 'zod';
 import fs from 'fs';
 import path from 'path';
 
-const prisma = new PrismaClient();
+// const prisma = new PrismaClient(); // Hapus baris ini
 
 // Zod schema untuk validasi user
 const userSchema = z.object({
@@ -52,7 +52,7 @@ const productSchema = z.object({
   name: z.string().min(2).max(100),
   categoryId: z.string().min(1),
   imageUrl: z.string().url().optional(),
-  outletId: z.string(),
+  outletId: z.string().optional(), // Optional untuk produk global
   variants: z.array(z.object({
     name: z.string().min(1).max(50),
     price: z.number().min(0),
@@ -68,6 +68,7 @@ export async function getProducts(): Promise<Product[]> {
         include: {
             variants: true,
             category: true, // Tambahkan relasi kategori
+            outlet: true, // Tambahkan relasi outlet
         },
         orderBy: {
             createdAt: 'asc'
@@ -78,7 +79,8 @@ export async function getProducts(): Promise<Product[]> {
     return products.map(product => ({
         ...product,
         category: product.category?.name || 'Unknown Category', // Extract category name
-        categoryId: product.categoryId?.toString() // Ensure categoryId is string
+        categoryId: product.categoryId?.toString(), // Ensure categoryId is string
+        outlet: product.outlet?.name || null // Extract outlet name
     })) as Product[];
 }
 
@@ -99,16 +101,21 @@ export async function addProductCategory(name: string): Promise<{ id: string; na
 
 export async function addProduct(productData: Omit<Product, 'id'> & { categoryId: string }, currentUser: User): Promise<Product> {
     productSchema.parse(productData);
-    if (currentUser.role !== 'owner' && currentUser.role !== 'cashier') {
-        throw new Error('Forbidden: Only owner or cashier can add product');
+    
+    // Hanya owner yang boleh menambah produk
+    if (currentUser.role !== 'owner') {
+        throw new Error('Forbidden: Only owner can add product');
     }
-    if (currentUser.role === 'cashier' && productData.outletId !== currentUser.outletId) {
-        throw new Error('Forbidden: Cashier can only add product for their own outlet');
-    }
+    
     const { name, imageUrl, variants, outletId, categoryId } = productData;
     
-    // Debug logging
-    console.log('DEBUG - categoryId received:', categoryId, 'type:', typeof categoryId);
+    // Validasi outletId jika ada (untuk produk outlet-specific)
+    if (outletId) {
+        const outletExists = await prisma.outlet.findUnique({ where: { id: outletId } });
+        if (!outletExists) {
+            throw new Error('Outlet yang dipilih tidak ditemukan di database. Silakan pilih outlet lain.');
+        }
+    }
     
     const categoryIdNum = Number(categoryId);
     console.log('DEBUG - categoryIdNum after Number():', categoryIdNum, 'isNaN:', isNaN(categoryIdNum));
@@ -120,7 +127,6 @@ export async function addProduct(productData: Omit<Product, 'id'> & { categoryId
     const data: any = {
         name,
         imageUrl,
-        outletId,
         categoryId: categoryIdNum,
         variants: {
             create: variants.map(v => ({
@@ -132,6 +138,11 @@ export async function addProduct(productData: Omit<Product, 'id'> & { categoryId
             }))
         }
     };
+    
+    // Hanya tambahkan outletId jika ada (untuk produk outlet-specific)
+    if (outletId) {
+        data.outletId = outletId;
+    }
     const newProduct = await prisma.product.create({
         data,
         include: {
@@ -144,12 +155,13 @@ export async function addProduct(productData: Omit<Product, 'id'> & { categoryId
     return {
         ...newProduct,
         category: newProduct.category?.name || 'Unknown Category',
-        categoryId: newProduct.categoryId?.toString()
+        categoryId: newProduct.categoryId?.toString(),
+        outlet: newProduct.outlet?.name || null
     } as Product;
 }
 
 export async function updateProduct(productId: string, productData: Omit<Product, 'id'>): Promise<Product> {
-    const { name, category, categoryId, imageUrl, variants } = productData;
+    const { name, category, categoryId, imageUrl, variants, outletId } = productData;
 
     // Ambil data produk lama
     const oldProduct = await prisma.product.findUnique({ where: { id: productId } });
@@ -170,6 +182,14 @@ export async function updateProduct(productId: string, productData: Omit<Product
         throw new Error('Kategori produk tidak valid. Silakan pilih ulang kategori.');
     }
     
+    // Validasi outletId jika ada
+    if (outletId) {
+        const outletExists = await prisma.outlet.findUnique({ where: { id: outletId } });
+        if (!outletExists) {
+            throw new Error('Outlet yang dipilih tidak ditemukan di database. Silakan pilih outlet lain.');
+        }
+    }
+    
     // Prisma doesn't support direct upsert on nested relations with a custom ID.
     // So we manage variants manually: delete old ones, create new ones.
     const updatedProduct = await prisma.$transaction(async (tx) => {
@@ -180,6 +200,7 @@ export async function updateProduct(productId: string, productData: Omit<Product
                 name,
                 categoryId: finalCategoryId,
                 imageUrl,
+                outletId: outletId || null, // Bisa null untuk produk global
                 variants: {
                     create: variants.map(v => ({
                         name: v.name,
@@ -190,7 +211,7 @@ export async function updateProduct(productId: string, productData: Omit<Product
                     }))
                 }
             },
-            include: { variants: true, category: true }
+            include: { variants: true, category: true, outlet: true }
         });
     });
 
@@ -208,7 +229,8 @@ export async function updateProduct(productId: string, productData: Omit<Product
     return {
         ...updatedProduct,
         category: updatedProduct.category?.name || 'Unknown Category',
-        categoryId: updatedProduct.categoryId?.toString()
+        categoryId: updatedProduct.categoryId?.toString(),
+        outlet: updatedProduct.outlet?.name || null
     } as Product;
 }
 
@@ -464,7 +486,10 @@ export async function getUsers(): Promise<User[]> {
 
 export async function verifyUserPassword(username: string, passwordAttempt: string): Promise<User | null> {
     console.log(`[LOGIN] Attempt for username: ${username}`);
-    const user = await prisma.user.findUnique({ where: { username } });
+    const user = await prisma.user.findUnique({ 
+        where: { username },
+        include: { outlet: true }
+    });
     if (user && user.password) {
         const isMatch = await bcrypt.compare(passwordAttempt, user.password);
         if (isMatch) {
@@ -497,6 +522,9 @@ export async function addUser(userData: Omit<User, 'id' | 'password'> & { passwo
     };
     if (userData.role === 'cashier' && userData.outletId) {
         userDataForPrisma.outletId = userData.outletId;
+    } else if (userData.role === 'owner') {
+        // Owner tidak terikat outlet
+        userDataForPrisma.outletId = null;
     }
     const newUser = await prisma.user.create({
         data: userDataForPrisma
@@ -519,6 +547,9 @@ export async function updateUser(userId: string, userData: Partial<Omit<User, 'i
     };
     if (userData.role === 'cashier' && userData.outletId) {
         dataToUpdate.outletId = userData.outletId;
+    } else if (userData.role === 'owner') {
+        // Owner tidak terikat outlet
+        dataToUpdate.outletId = null;
     }
     
     const updatedUser = await prisma.user.update({
@@ -559,7 +590,7 @@ const customerSchema = z.object({
   transactionIds: z.array(z.string()),
 });
 
-export async function addCustomer(customerData: Omit<Customer, 'id' | 'isMember' | 'memberId' | 'lastUsedDiscount'>, transactionOutletId: string): Promise<Customer> {
+export async function addCustomer(customerData: Omit<Customer, 'id' | 'isMember' | 'memberId' | 'lastUsedDiscount'>): Promise<Customer> {
     
     try {
         // Coba buat customer baru
@@ -629,6 +660,84 @@ export async function updateOutlet(outletId: string, outletData: Partial<Omit<Ou
 
 export async function deleteOutlet(outletId: string): Promise<void> {
     await prisma.outlet.delete({ where: { id: outletId } });
+}
+
+// --- Discount Service ---
+export async function getDiscounts(): Promise<any[]> { // Ganti any dengan tipe DiscountRule nanti
+    const discounts = await prisma.discountRule.findMany({
+        orderBy: { createdAt: 'desc' },
+        include: {
+            product: true,
+            category: true,
+        }
+    });
+    return discounts;
+}
+
+export async function addDiscount(data: any, currentUser: { role: string }): Promise<any> {
+    if (currentUser.role !== 'owner') {
+        throw new Error('Forbidden: Only owner can add discounts.');
+    }
+
+    const { name, isActive, discountType, discountValue, appliesTo, minPurchase, validFrom, validUntil, scope, productId, categoryId } = data;
+    
+    // Konversi categoryId ke integer jika ada
+    const categoryIdNum = categoryId ? parseInt(categoryId, 10) : undefined;
+
+    const newDiscount = await prisma.discountRule.create({
+        data: {
+            name,
+            isActive,
+            discountType,
+            discountValue,
+            appliesTo,
+            minPurchase,
+            validFrom,
+            validUntil,
+            scope,
+            productId,
+            categoryId: categoryIdNum,
+        }
+    });
+
+    return newDiscount;
+}
+
+export async function updateDiscount(id: string, data: any, currentUser: { role: string }): Promise<any> {
+    if (currentUser.role !== 'owner') {
+        throw new Error('Forbidden: Only owner can update discounts.');
+    }
+
+    const { name, isActive, discountType, discountValue, appliesTo, minPurchase, validFrom, validUntil, scope, productId, categoryId } = data;
+    
+    // Konversi categoryId ke integer jika ada
+    const categoryIdNum = categoryId ? parseInt(categoryId, 10) : undefined;
+
+    const updatedDiscount = await prisma.discountRule.update({
+        where: { id },
+        data: {
+            name,
+            isActive,
+            discountType,
+            discountValue,
+            appliesTo,
+            minPurchase,
+            validFrom,
+            validUntil,
+            scope,
+            productId,
+            categoryId: categoryIdNum,
+        }
+    });
+
+    return updatedDiscount;
+}
+
+export async function deleteDiscount(id: string, currentUser: { role: string }): Promise<void> {
+    if (currentUser.role !== 'owner') {
+        throw new Error('Forbidden: Only owner can delete discounts.');
+    }
+    await prisma.discountRule.delete({ where: { id } });
 }
 
 

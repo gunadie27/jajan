@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -18,7 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import Image from "next/image";
-import type { OrderItem, Product, ProductVariant, Transaction, Customer, OrderChannel, PaymentMethod, PlatformSettings, Outlet } from "@/lib/types";
+import type { OrderItem, Product, ProductVariant, Transaction, Customer, OrderChannel, PaymentMethod, PlatformSettings, Outlet, DiscountRule } from "@/lib/types";
 import { X, Plus, Minus, CreditCard, ScanLine, CheckCircle, Printer, ClipboardList, ShoppingBag, Send, Handshake, Store, Utensils, Bike, ShoppingCart } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
@@ -29,6 +29,7 @@ import {
     getTransactions, 
     getPlatformSettings, 
     getOutlets,
+    getDiscounts,
     updateProductStock,
     addTransaction,
     addCustomer,
@@ -42,6 +43,12 @@ import { getCustomerByPhone } from '@/services/data-service';
 import { useCashierSession } from "@/hooks/use-cashier-session";
 import { SessionWarning } from "@/components/session-warning";
 
+// Tipe untuk diskon yang diaplikasikan
+type AppliedDiscount = {
+  name: string;
+  amount: number;
+  ruleId: string;
+};
 
 function getVariantPriceForChannel(variant: ProductVariant, channel: OrderChannel, markup: number): number {
     if (channel === 'store') {
@@ -312,6 +319,8 @@ const paymentMethodOptions = {
 export default function POSPage() {
   const [order, setOrder] = useState<OrderItem[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [activeDiscounts, setActiveDiscounts] = useState<DiscountRule[]>([]);
   const [platformSettings, setPlatformSettings] = useState<PlatformSettings>({});
   const [outlets, setOutlets] = useState<Outlet[]>([]);
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
@@ -324,19 +333,114 @@ export default function POSPage() {
   const [orderChannel, setOrderChannel] = useState<OrderChannel>('store');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
   const [isLoading, setIsLoading] = useState(true);
+  const [isInitialized, setIsInitialized] = useState(false);
   const { toast } = useToast();
   const { user } = useAuth();
   const router = useRouter();
   // const isMobile = useIsMobile(); // (opsional, jika ingin dipakai untuk deteksi mobile di komponen)
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
   const { hasActiveSession } = useCashierSession();
-
-  // Fix: Use correct property names from CustomerStore
   const customerStore = useCustomerStore();
-  const customers = customerStore.customers as Customer[];
-  const fetchCustomers = customerStore.fetchCustomers;
-  const addCustomer = customerStore.addCustomer;
-  const updateCustomer = customerStore.updateCustomer;
+  const { fetchCustomers } = customerStore;
+  
+  // State baru untuk diskon
+  const [appliedDiscount, setAppliedDiscount] = useState<AppliedDiscount | null>(null);
+
+  // Fungsi untuk kalkulasi total, dipindahkan ke atas agar bisa dipakai di banyak tempat
+  const calculateTotal = useCallback((currentOrder: OrderItem[]) => {
+    return currentOrder.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  }, []);
+
+  const total = calculateTotal(order);
+  
+  const calculateDiscount = useCallback(() => {
+    const isMember = !!customerStore.customers.length; // Gunakan customers.length sebagai proxy untuk member status
+    let bestDiscount: AppliedDiscount | null = null;
+    let maxDiscountAmount = 0;
+
+    for (const rule of activeDiscounts) {
+      let currentDiscountAmount = 0;
+
+      // 1. Cek audiens
+      const isAudienceMatch =
+        (rule.appliesTo === 'ALL') ||
+        (rule.appliesTo === 'MEMBER_ONLY' && isMember) ||
+        (rule.appliesTo === 'NON_MEMBER_ONLY' && !isMember);
+      if (!isAudienceMatch) continue;
+
+      // 2. Cek minimum pembelian
+      if (rule.minPurchase && total < rule.minPurchase) continue;
+
+      // 3. Cek expired
+      if (rule.validUntil && new Date(rule.validUntil) < new Date()) continue;
+
+      // 4. Cek bundling produk (jika ada)
+      if (rule.bundledProductIds && rule.bundledProductIds.length > 0) {
+        const allBundledInCart = rule.bundledProductIds.every(pid =>
+          order.some(item => item.product.id === pid)
+        );
+        if (!allBundledInCart) continue;
+      }
+      
+      // 5. Kalkulasi berdasarkan cakupan
+      if (rule.scope === 'ENTIRE_ORDER') {
+        if (rule.discountType === 'PERCENTAGE') {
+          currentDiscountAmount = total * (rule.discountValue / 100);
+          // Terapkan maksimal potongan jika ada
+          if (rule.maxDiscountAmount && currentDiscountAmount > rule.maxDiscountAmount) {
+            currentDiscountAmount = rule.maxDiscountAmount;
+          }
+        } else {
+          currentDiscountAmount = rule.discountValue;
+        }
+      } else if (rule.scope === 'SPECIFIC_PRODUCT' && rule.productId) {
+        const item = order.find(i => i.product.id === rule.productId);
+        if (item) {
+          const itemTotal = item.price * item.quantity;
+          if (rule.discountType === 'PERCENTAGE') {
+            currentDiscountAmount = itemTotal * (rule.discountValue / 100);
+            if (rule.maxDiscountAmount && currentDiscountAmount > rule.maxDiscountAmount) {
+              currentDiscountAmount = rule.maxDiscountAmount;
+            }
+          } else {
+            currentDiscountAmount = Math.min(rule.discountValue, itemTotal);
+          }
+        }
+      } else if (rule.scope === 'SPECIFIC_CATEGORY' && rule.categoryId) {
+        const itemsInCategory = order.filter(i => String(i.product.categoryId) === String(rule.categoryId));
+        if (itemsInCategory.length > 0) {
+          const categoryTotal = itemsInCategory.reduce((sum, i) => sum + i.price * i.quantity, 0);
+          if (rule.discountType === 'PERCENTAGE') {
+            currentDiscountAmount = categoryTotal * (rule.discountValue / 100);
+            if (rule.maxDiscountAmount && currentDiscountAmount > rule.maxDiscountAmount) {
+              currentDiscountAmount = rule.maxDiscountAmount;
+            }
+          } else {
+            currentDiscountAmount = Math.min(rule.discountValue, categoryTotal);
+          }
+        }
+      }
+      
+      // 6. Bandingkan dan pilih diskon terbaik
+      if (currentDiscountAmount > maxDiscountAmount) {
+        maxDiscountAmount = currentDiscountAmount;
+        bestDiscount = {
+          name: rule.name,
+          amount: maxDiscountAmount,
+          ruleId: rule.id,
+        };
+      }
+    }
+
+    setAppliedDiscount(bestDiscount);
+  }, [order, customerStore.customers.length, activeDiscounts, total]);
+
+  // Panggil kalkulasi setiap kali order atau customer berubah
+  useEffect(() => {
+    calculateDiscount();
+  }, [calculateDiscount]);
+
+  const finalTotal = total - (appliedDiscount?.amount || 0);
 
   const handleCashReceivedChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const rawValue = e.target.value.replace(/[^\d]/g, ''); // Remove non-digits
@@ -346,20 +450,26 @@ export default function POSPage() {
   };
 
   useEffect(() => {
+    if (isInitialized) return; // Prevent multiple fetches
+    
     async function fetchData() {
       try {
         setIsLoading(true);
-        const [fetchedProducts, fetchedCustomers, fetchedSettings, fetchedOutlets] = await Promise.all([
+        const [productsData, outletsData, platformSettingsData, discountsData] = await Promise.all([
             getProducts(),
-            getCustomers(),
+          getOutlets(),
             getPlatformSettings(),
-            getOutlets()
+          getDiscounts()
         ]);
-        setProducts(fetchedProducts);
-        setPlatformSettings(fetchedSettings);
-        setOutlets(fetchedOutlets);
+        setProducts(productsData);
+        await fetchCustomers(); // Menggunakan customer store
+        setOutlets(outletsData);
+        setPlatformSettings(platformSettingsData);
+        setActiveDiscounts(discountsData.filter(d => d.isActive));
+        setIsInitialized(true);
+
       } catch (error) {
-        console.error('Error fetching data:', error);
+        console.error('Error fetching initial data:', error);
         toast({
           variant: "destructive",
           title: "Error",
@@ -370,7 +480,12 @@ export default function POSPage() {
       }
     }
     fetchData();
-  }, []);
+  }, [fetchCustomers, isInitialized]);
+
+  // Update customers state when customerStore changes
+  useEffect(() => {
+    setCustomers(customerStore.customers);
+  }, [customerStore.customers]);
 
   const currentMarkup = platformSettings[orderChannel as keyof typeof platformSettings]?.markup || 0;
 
@@ -417,12 +532,6 @@ export default function POSPage() {
       );
     });
   };
-  
-  const calculateTotal = (currentOrder: OrderItem[]) => {
-    return currentOrder.reduce((sum, item) => sum + item.price * item.quantity, 0);
-  };
-  
-  const total = calculateTotal(order);
 
   const handlePayment = async (customerId?: string, customerName?: string) => {
     if (!user) {
@@ -538,7 +647,7 @@ export default function POSPage() {
           console.log("Updated customer from DB:", updatedCustomer);
           await fetchCustomers(); // Refresh global state
           customerId = updatedCustomer.id;
-          router.refresh();
+          // router.refresh(); // Hapus untuk mencegah re-render yang tidak perlu
       } else {
           const newCustomerData: Omit<Customer, 'id'> = {
               name: name,
@@ -547,12 +656,11 @@ export default function POSPage() {
               lastTransactionDate: new Date(),
               totalSpent: lastTransaction?.total || 0,
               transactionIds: lastTransaction ? [String(lastTransaction.id)] : [],
-              outletId: user?.outletId || "", // Pastikan outletId diisi
           };
-          const newCustomer = await addCustomer(newCustomerData, user);
+          const newCustomer = await addCustomer(newCustomerData);
           await fetchCustomers(); // Refresh global state
           customerId = newCustomer.id;
-          router.refresh();
+          // router.refresh(); // Hapus untuk mencegah re-render yang tidak perlu
       }
       
       // Update the transaction in the database so it is linked to the customer
@@ -605,14 +713,16 @@ export default function POSPage() {
 
   // Recalculate order prices when channel changes
   useEffect(() => {
-    setOrder(currentOrder => {
-      const newMarkup = platformSettings[orderChannel as keyof typeof platformSettings]?.markup || 0;
-      return currentOrder.map(item => ({
-        ...item,
-        price: getVariantPriceForChannel(item.variant, orderChannel, newMarkup),
-      }))
-    })
-  }, [orderChannel, platformSettings]);
+    if (order.length > 0) { // Hanya update jika ada item di order
+      setOrder(currentOrder => {
+        const newMarkup = platformSettings[orderChannel as keyof typeof platformSettings]?.markup || 0;
+        return currentOrder.map(item => ({
+          ...item,
+          price: getVariantPriceForChannel(item.variant, orderChannel, newMarkup),
+        }))
+      })
+    }
+  }, [orderChannel, platformSettings, order.length]);
   
   const totalForDialog = calculateTotal(order);
   const changeForDialog = cashReceived > totalForDialog ? cashReceived - totalForDialog : 0;

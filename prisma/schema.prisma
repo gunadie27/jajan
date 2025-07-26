@@ -28,17 +28,18 @@ model User {
   email     String           @unique
   password  String
   role      String
-  outletId  String
+  outletId  String?
   createdAt DateTime         @default(now())
   updatedAt DateTime         @updatedAt
   sessions  CashierSession[]
-  outlet    Outlet           @relation("OutletUsers", fields: [outletId], references: [id])
+  outlet    Outlet?          @relation("OutletUsers", fields: [outletId], references: [id])
 }
 
 model ProductCategory {
   id       Int       @id @default(autoincrement())
   name     String    @db.VarChar(100)
   products Product[]
+  discountRules DiscountRule[]
 }
 
 model Product {
@@ -48,12 +49,13 @@ model Product {
   dataAiHint String?
   createdAt  DateTime         @default(now())
   updatedAt  DateTime         @updatedAt
-  outletId   String
+  outletId   String?
   categoryId Int
   orderItems OrderItem[]
   category   ProductCategory  @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  outlet     Outlet           @relation("OutletProducts", fields: [outletId], references: [id])
+  outlet     Outlet?          @relation("OutletProducts", fields: [outletId], references: [id])
   variants   ProductVariant[]
+  discountRules DiscountRule[]
 }
 
 model ProductVariant {
@@ -159,4 +161,42 @@ model PlatformSetting {
   id      String @id @default(uuid())
   channel String @unique
   markup  Float
+}
+
+model DiscountRule {
+  id            String           @id @default(uuid())
+  name          String
+  isActive      Boolean          @default(true)
+  discountType  DiscountType
+  discountValue Float
+  maxDiscountAmount Float?       // Maksimal potongan untuk diskon persentase
+  appliesTo     DiscountAudience
+  minPurchase   Float?
+  bundledProductIds String[]     // Untuk diskon bundling produk
+  validFrom     DateTime?
+  validUntil    DateTime?
+  scope         DiscountScope
+  productId     String?
+  product       Product?         @relation(fields: [productId], references: [id], onDelete: SetNull)
+  categoryId    Int?
+  category      ProductCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+}
+
+enum DiscountType {
+  PERCENTAGE
+  FIXED_AMOUNT
+}
+
+enum DiscountAudience {
+  ALL
+  MEMBER_ONLY
+  NON_MEMBER_ONLY
+}
+
+enum DiscountScope {
+  ENTIRE_ORDER
+  SPECIFIC_PRODUCT
+  SPECIFIC_CATEGORY
 }

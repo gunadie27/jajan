@@ -18,7 +18,8 @@ export type Product = {
   categoryId?: string; // Add categoryId for form operations
   imageUrl: string;
   variants: ProductVariant[];
-  outletId?: string;
+  outletId?: string | null; // Can be null for global products
+  outlet?: string | null; // Outlet name for display
   "data-ai-hint"?: string;
 };
 
@@ -37,8 +38,9 @@ export type Customer = {
     lastTransactionDate: Date;
     totalSpent: number;
     transactionIds: string[];
-    outletId: string;
-    outletName?: string; // Add outlet name for display
+    isMember?: boolean;
+    memberId?: string;
+    lastUsedDiscount?: Date;
 }
 
 export type PaymentMethod = 'cash' | 'qris' | 'platform_balance';
@@ -84,7 +86,7 @@ export type User = {
   role: UserRole;
   email: string;
   password?: string;
-  outletId?: string;
+  outletId?: string | null; // Null untuk owner yang tidak terikat outlet
 };
 
 export type CashierSession = {

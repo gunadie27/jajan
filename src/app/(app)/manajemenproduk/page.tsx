@@ -35,15 +35,16 @@ import { Badge } from "@/components/ui/badge";
 import type { Product, PlatformSettings, OrderChannel } from "@/lib/types";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
-import { getProducts, addProduct, updateProduct, deleteProduct, getPlatformSettings, updatePlatformSettings, getOrderChannels, getProductCategories, addProductCategory } from "@/services/data-service";
+import { getProducts, addProduct, updateProduct, deleteProduct, getPlatformSettings, updatePlatformSettings, getOrderChannels, getProductCategories, addProductCategory, getOutlets } from "@/services/data-service";
 import { cn } from "@/lib/utils";
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "@/components/ui/accordion";
 
-const initialProductFormState: Omit<Product, 'id'> = {
+const initialProductFormState: Omit<Product, 'id'> & { outletId?: string } = {
   name: '',
   category: '',
   imageUrl: 'https://placehold.co/300x300.png',
-  variants: [{ id: `v${Date.now()}`, name: '', price: 0, trackStock: true, stock: 0, cogs: 0 }]
+  variants: [{ id: `v${Date.now()}`, name: '', price: 0, trackStock: true, stock: 0, cogs: 0 }],
+  outletId: ''
 };
 
 function ProductForm({
@@ -57,26 +58,37 @@ function ProductForm({
   onCancel: () => void;
   user: any;
 }) {
-  const [formData, setFormData] = useState<Omit<Product, 'id'> & { isNewCategory?: boolean, categoryId?: string }>(product ? { ...product, id: undefined } as any : initialProductFormState);
+  const [formData, setFormData] = useState<Omit<Product, 'id'> & { isNewCategory?: boolean, categoryId?: string, outletId?: string }>(product ? { ...product, id: undefined } as any : initialProductFormState);
   const [imagePreview, setImagePreview] = useState<string | null>(product?.imageUrl || null);
   const [includeImage, setIncludeImage] = useState<boolean>(product ? !!product.imageUrl : true);
   const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
+  const [outlets, setOutlets] = useState<{ id: string; name: string }[]>([]);
   const [newCategoryName, setNewCategoryName] = useState('');
   const [loadingCategory, setLoadingCategory] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
   useEffect(() => {
-    async function fetchCategories() {
-      const cats = await getProductCategories();
+    async function fetchData() {
+      const [cats, outletsData] = await Promise.all([
+        getProductCategories(),
+        getOutlets()
+      ]);
       setCategories(cats);
+      setOutlets(outletsData);
     }
-    fetchCategories();
-  }, []);
+    fetchData();
+  }, [user?.role]);
+  
+  // Tidak perlu set default outlet, biarkan user memilih
 
   useEffect(() => {
     if (product) {
-      setFormData(prev => ({ ...prev, isNewCategory: false }));
+      setFormData(prev => ({ 
+        ...prev, 
+        isNewCategory: false,
+        outletId: product.outletId || ''
+      }));
       setIncludeImage(!!product.imageUrl && product.imageUrl !== 'https://placehold.co/300x300.png');
     } else {
       setFormData(prev => ({ ...prev, isNewCategory: false }));
@@ -205,16 +217,19 @@ function ProductForm({
       toast({ title: 'Kategori wajib dipilih', variant: 'destructive' });
       return;
     }
+    
+    // Hanya owner yang boleh menambah produk
+    if (user?.role !== 'owner') {
+      toast({ title: 'Error', description: 'Hanya owner yang boleh menambah produk', variant: 'destructive' });
+      return;
+    }
+    
     const finalFormData = {
       ...formData,
       imageUrl: includeImage ? (imagePreview || 'https://placehold.co/300x300.png') : 'https://placehold.co/300x300.png',
-      outletId: user?.outletId,
+      outletId: formData.outletId, // Bisa null untuk produk global
       categoryId: formData.categoryId
     };
-    
-    // Debug logging
-    console.log('DEBUG - Frontend formData.categoryId:', formData.categoryId, 'type:', typeof formData.categoryId);
-    console.log('DEBUG - Frontend finalFormData.categoryId:', finalFormData.categoryId, 'type:', typeof finalFormData.categoryId);
     
     onSave(finalFormData);
   };
@@ -337,6 +352,34 @@ function ProductForm({
               </div>
             )}
           </div>
+          {/* Field outlet hanya untuk owner */}
+          {user?.role === 'owner' && (
+            <div className="space-y-1.5">
+              <Label htmlFor="outlet" className="text-xs sm:text-sm">Outlet (Opsional)</Label>
+              <Select
+                value={formData.outletId || 'global'}
+                onValueChange={(value) => {
+                  setFormData(prev => ({ 
+                    ...prev, 
+                    outletId: value === 'global' ? null : value 
+                  }));
+                }}
+              >
+                <SelectTrigger className="rounded-lg px-3 py-1.5 text-xs sm:text-sm">
+                  <SelectValue placeholder="Pilih Outlet" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="global">🌐 Produk Global (Semua Outlet)</SelectItem>
+                  {outlets.map(outlet => (
+                    <SelectItem key={outlet.id} value={outlet.id}>🏪 {outlet.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Pilih "Produk Global" jika produk tersedia di semua outlet, atau pilih outlet tertentu jika produk hanya tersedia di outlet tersebut.
+              </p>
+            </div>
+          )}
           <div className="space-y-2">
             <Label className="text-xs sm:text-sm">Varian Produk</Label>
             {formData.variants.map((variant, index) => (
@@ -646,6 +689,7 @@ export default function ManageProductsPage() {
                   <TableHead className="py-2 px-2 font-semibold text-xs">Gambar</TableHead>
                   <TableHead className="py-2 px-2 font-semibold text-xs">Nama</TableHead>
                   <TableHead className="py-2 px-2 font-semibold text-xs">Kategori</TableHead>
+                  <TableHead className="py-2 px-2 font-semibold text-xs">Outlet</TableHead>
                   <TableHead className="py-2 px-2 font-semibold text-xs">Varian</TableHead>
                   <TableHead className="py-2 px-2 font-semibold text-xs">Harga</TableHead>
                   <TableHead className="py-2 px-2 font-semibold text-xs">Stok</TableHead>
@@ -655,7 +699,7 @@ export default function ManageProductsPage() {
               <TableBody>
                 {isLoading ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="py-8 text-center">
+                    <TableCell colSpan={8} className="py-8 text-center">
                       <div className="flex flex-col items-center gap-2">
                         <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
                         <span className="text-sm text-muted-foreground">Memuat produk...</span>
@@ -664,7 +708,7 @@ export default function ManageProductsPage() {
                   </TableRow>
                 ) : filteredProducts.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">
+                    <TableCell colSpan={8} className="py-8 text-center text-muted-foreground">
                       Tidak ada produk ditemukan.
                     </TableCell>
                   </TableRow>
@@ -676,6 +720,16 @@ export default function ManageProductsPage() {
                       </TableCell>
                       <TableCell className="py-2 px-2 font-medium text-xs">{product.name}</TableCell>
                       <TableCell className="py-2 px-2 text-xs">{product.category}</TableCell>
+                      <TableCell className="py-2 px-2 text-xs">
+                        {product.outlet ? (
+                          <Badge variant="secondary" className="text-xs">🏪 {product.outlet}</Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-xs">
+                            <span className="hidden sm:inline">🌐 Global</span>
+                            <span className="sm:hidden">🌐</span>
+                          </Badge>
+                        )}
+                      </TableCell>
                       <TableCell className="py-2 px-2 text-xs">
                         {product.variants.map(v => v.name).join(", ")}
                       </TableCell>

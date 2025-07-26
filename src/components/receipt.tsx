@@ -1,7 +1,7 @@
 
 import type { Transaction, OrderChannel, ProductVariant } from "@/lib/types";
 import { AppLogo } from "@/components/app-logo";
-import { QRCode } from 'qrcode.react';
+import { QRCodeSVG } from 'qrcode.react';
 
 function formatCurrency(value: number | undefined | null) {
     if (typeof value !== 'number' || isNaN(value)) return 'Rp0';
@@ -73,7 +73,7 @@ export function Receipt({ transaction }: { transaction: Transaction }) {
         {/* QR code member */}
         {qrValue && (
           <div className="flex flex-col items-center mt-6 mb-2">
-            <QRCode value={qrValue} size={96} level="M" includeMargin={false} />
+            <QRCodeSVG value={qrValue} size={96} level="M" includeMargin={false} />
             <span className="text-xs mt-2 font-semibold">{memberName}</span>
             <span className="text-[10px] text-muted-foreground">Member QR</span>
           </div>
