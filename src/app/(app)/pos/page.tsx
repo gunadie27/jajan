@@ -935,18 +935,22 @@ export default function POSPage() {
 
       // Validasi apakah member bisa menggunakan diskon hari ini
       const canUseDiscount = await canMemberUseDiscount(memberData.memberId);
-      if (!canUseDiscount) {
-        setMemberValidationError('Member sudah menggunakan diskon hari ini. Silakan coba lagi besok.');
-        return;
-      }
-
       setCurrentMember(member);
       setQrScannerOpen(false);
       setMemberValidationError('');
-      toast({
-        title: "Member Divalidasi",
-        description: `Selamat datang, ${member.name}! Diskon member tersedia.`,
-      });
+      if (!canUseDiscount) {
+        setAppliedDiscount(null); // Reset diskon
+        toast({
+          title: "Member Valid, Tanpa Diskon",
+          description: `Member ${member.name} sudah menggunakan diskon hari ini. Transaksi tetap bisa dilanjutkan tanpa diskon member.`,
+          variant: "default"
+        });
+      } else {
+        toast({
+          title: "Member Divalidasi",
+          description: `Selamat datang, ${member.name}! Diskon member tersedia.`,
+        });
+      }
     } catch (error) {
       console.error('Error handling QR scan:', error);
       setMemberValidationError('QR code tidak valid atau rusak.');
