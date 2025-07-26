@@ -129,6 +129,7 @@ model Customer {
   isMember             Boolean       @default(true)
   memberId             String        @unique @default(uuid())
   lastUsedDiscount     DateTime?
+  lastDiscountDate     DateTime?     // Tanggal terakhir menggunakan diskon member
   firstTransactionDate DateTime
   lastTransactionDate  DateTime
   totalSpent           Float

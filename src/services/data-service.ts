@@ -644,6 +644,58 @@ export async function deleteCustomer(customerId: string): Promise<void> {
     await prisma.customer.delete({ where: { id: customerId } });
 }
 
+/**
+ * Validasi apakah member bisa menggunakan diskon hari ini
+ * Member hanya bisa menggunakan diskon 1x sehari
+ */
+export async function canMemberUseDiscount(memberId: string): Promise<boolean> {
+    try {
+        const customer = await prisma.customer.findUnique({
+            where: { memberId },
+            select: { lastDiscountDate: true }
+        });
+
+        if (!customer) {
+            return false; // Member tidak ditemukan
+        }
+
+        if (!customer.lastDiscountDate) {
+            return true; // Belum pernah menggunakan diskon
+        }
+
+        // Cek apakah sudah menggunakan diskon hari ini
+        const today = new Date();
+        const lastDiscountDate = new Date(customer.lastDiscountDate);
+        
+        // Bandingkan tanggal saja (abaikan waktu)
+        const todayDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+        const lastDiscountDateOnly = new Date(lastDiscountDate.getFullYear(), lastDiscountDate.getMonth(), lastDiscountDate.getDate());
+        
+        return todayDate.getTime() !== lastDiscountDateOnly.getTime();
+    } catch (error) {
+        console.error('Error checking member discount eligibility:', error);
+        return false;
+    }
+}
+
+/**
+ * Update tanggal terakhir member menggunakan diskon
+ */
+export async function updateMemberDiscountUsage(memberId: string): Promise<void> {
+    try {
+        await prisma.customer.update({
+            where: { memberId },
+            data: { 
+                lastDiscountDate: new Date(),
+                lastUsedDiscount: new Date()
+            }
+        });
+    } catch (error) {
+        console.error('Error updating member discount usage:', error);
+        throw error;
+    }
+}
+
 // --- Outlet Service ---
 export async function getOutlets(): Promise<Outlet[]> {
     return await prisma.outlet.findMany({ orderBy: { name: 'asc' }});

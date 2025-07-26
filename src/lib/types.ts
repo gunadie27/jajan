@@ -41,6 +41,7 @@ export type Customer = {
     isMember?: boolean;
     memberId?: string;
     lastUsedDiscount?: Date;
+    lastDiscountDate?: Date; // Tanggal terakhir menggunakan diskon member
 }
 
 export type PaymentMethod = 'cash' | 'qris' | 'platform_balance';
@@ -110,4 +111,25 @@ export type CashierSession = {
 
 export type PlatformSettings = {
   [key: string]: { markup: number };
+};
+
+export type DiscountRule = {
+  id: string;
+  name: string;
+  isActive: boolean;
+  discountType: 'PERCENTAGE' | 'FIXED_AMOUNT';
+  discountValue: number;
+  maxDiscountAmount?: number | null;
+  appliesTo: 'ALL' | 'MEMBER_ONLY' | 'NON_MEMBER_ONLY';
+  minPurchase?: number | null;
+  bundledProductIds: string[];
+  validFrom?: Date | null;
+  validUntil?: Date | null;
+  scope: 'ENTIRE_ORDER' | 'SPECIFIC_PRODUCT' | 'SPECIFIC_CATEGORY';
+  productId?: string | null;
+  product?: Product | null;
+  categoryId?: number | null;
+  category?: ProductCategory | null;
+  createdAt: Date;
+  updatedAt: Date;
 };

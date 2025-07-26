@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
@@ -34,12 +33,14 @@ import {
     addTransaction,
     addCustomer,
     updateCustomer,
-    updateTransaction
+    updateTransaction,
+    canMemberUseDiscount,
+    updateMemberDiscountUsage,
+    getCustomerByPhone
 } from "@/services/data-service";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useCustomerStore } from '@/store/customerStore';
-import { getCustomerByPhone } from '@/services/data-service';
 import { useCashierSession } from "@/hooks/use-cashier-session";
 import { SessionWarning } from "@/components/session-warning";
 import QrScanner from "@/components/qr-scanner";
@@ -143,30 +144,38 @@ function WhatsAppDialog({
     isOpen,
     transaction,
     onClose,
-    onConfirm
+    onConfirm,
+    currentMember, // Tambahkan prop ini
+    customers // Tambahkan prop ini
 } : {
     isOpen: boolean,
     transaction: Transaction | null,
     onClose: () => void,
-    onConfirm: (name: string, phone: string) => void
+    onConfirm: (name: string, phone: string) => void,
+    currentMember?: Customer | null,
+    customers: Customer[]
 }) {
     const [name, setName] = useState("");
     const [phone, setPhone] = useState("");
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
 
+    // Auto-fill nama & nomor jika currentMember ada
     useEffect(() => {
-      if (!isOpen) {
-        document.body.scrollTop = 0;
-        document.body.style.zoom = "1";
-        setName("");
-        setPhone("");
+      if (isOpen) {
+        if (currentMember) {
+          setName(currentMember.name || "");
+          setPhone(currentMember.phoneNumber || "");
+        } else {
+          setName("");
+          setPhone("");
+        }
         setError("");
         setLoading(false);
       }
-    }, [isOpen]);
+    }, [isOpen, currentMember]);
 
-    const generateReceiptText = (customerName: string) => {
+    const generateReceiptText = async (customerName: string) => {
         let text = `*Struk Digital - Maujajan POS*\n\n`;
         text += `Yth. ${customerName || 'Pelanggan'}\n\n`;
         text += `ID Transaksi: ${transaction?.transactionNumber || transaction?.id || '-'}\n`;
@@ -176,27 +185,106 @@ function WhatsAppDialog({
             text += `Member: ${customerName || 'Pelanggan'}\n`;
         }
         text += `--------------------------------\n`;
+        
+        // Hitung total harga asli (sebelum diskon)
+        let totalOriginalPrice = 0;
+        let totalDiscountAmount = 0;
+        
         transaction?.items.forEach(item => {
+            const itemTotal = Number(item.quantity) * Number(item.price);
+            totalOriginalPrice += itemTotal;
+            
+            // Tampilkan item dengan detail
             text += `${item.product.name} (${item.variant.name})\n`;
-            text += `${item.quantity} x Rp${item.price.toLocaleString('id-ID')} = Rp${(Number(item.quantity) * Number(item.price)).toLocaleString('id-ID')}\n`;
+            text += `${item.quantity} x Rp${item.price.toLocaleString('id-ID')} = Rp${itemTotal.toLocaleString('id-ID')}\n`;
+            
+            // Jika ada diskon produk tertentu, tampilkan di sini
+            // (Untuk implementasi diskon per produk, perlu data tambahan di OrderItem)
         });
         text += `--------------------------------\n`;
-        const subtotal = (transaction?.total ?? 0) + (transaction?.discountAmount ?? 0);
-        text += `Subtotal: Rp${subtotal.toLocaleString('id-ID')}\n`;
+        
+        // Tampilkan subtotal sebelum diskon
+        text += `Subtotal (Sebelum Diskon): Rp${totalOriginalPrice.toLocaleString('id-ID')}\n`;
+        
+        // Tampilkan detail diskon jika ada
         if (transaction?.discountName && transaction?.discountAmount) {
-            text += `Diskon: ${transaction.discountName} -Rp${transaction.discountAmount.toLocaleString('id-ID')}\n`;
+            // Hitung persentase diskon
+            const discountPercentage = totalOriginalPrice > 0 ? 
+                Math.round((transaction.discountAmount / totalOriginalPrice) * 100) : 0;
+            
+            text += `Diskon: ${transaction.discountName}`;
+            if (discountPercentage > 0) {
+                text += ` (${discountPercentage}%)`;
+            }
+            text += ` -Rp${transaction.discountAmount.toLocaleString('id-ID')}\n`;
         }
-        text += `*Total: Rp${(transaction?.total ?? 0).toLocaleString('id-ID')}*\n\n`;
-        if (transaction?.discountName) {
-            const memberId = `member_${transaction.customerId?.replace(/-/g, '')}`;
-            const qrData = JSON.stringify({ memberId, name: customerName || 'Pelanggan' });
-            text += `QR Member: ${qrData}\n\n`;
+        
+        // Tampilkan total setelah diskon
+        text += `*Total (Setelah Diskon): Rp${(transaction?.total ?? 0).toLocaleString('id-ID')}*\n\n`;
+        
+        // Debug: Log transaction data
+        console.log('🔍 DEBUG - Transaction data:', {
+            discountName: transaction?.discountName,
+            customerName: transaction?.customerName,
+            customerId: transaction?.customerId,
+            currentMember: currentMember
+        });
+        // Cari customer member berdasarkan nomor WhatsApp (phone) atau nama
+        let memberCustomer = null;
+        if (typeof getCustomerByPhone === 'function' && phone) {
+            try {
+                memberCustomer = await getCustomerByPhone(phone || "");
+            } catch (e) {
+                memberCustomer = null;
+            }
         }
+        if (!memberCustomer && customers && customers.length > 0) {
+            // Fallback cari berdasarkan nama
+            memberCustomer = customers.find(c => c.name === customerName);
+        }
+        console.log('🟡 [DEBUG] memberCustomer:', memberCustomer);
+        if (memberCustomer && memberCustomer.isMember && memberCustomer.memberId) {
+            console.log('🟢 [DEBUG] Masuk blok QR code, memberId:', memberCustomer.memberId);
+            try {
+                const memberData = {
+                    memberId: memberCustomer.memberId,
+                    name: memberCustomer.name,
+                    phone: memberCustomer.phoneNumber
+                };
+                console.log('📤 Sending member data:', memberData);
+                const res = await fetch('/api/member-qr', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(memberData)
+                });
+                console.log('📥 API Response status:', res.status);
+                if (res.ok) {
+                    const data = await res.json();
+                    console.log('✅ QR Code generated:', data.qrUrl);
+                    if (data.qrUrl) {
+                        text += `QR Code Member: ${data.qrUrl}\n\n`;
+                        console.log('✅ QR Code added to text');
+                    } else {
+                        console.log('❌ QR URL is empty');
+                    }
+                } else {
+                    const errorText = await res.text();
+                    console.error('❌ Failed to generate QR code:', errorText);
+                }
+            } catch (error) {
+                console.error('Error fetching member QR code:', error);
+            }
+        } else {
+            console.log('🔴 [DEBUG] Tidak masuk blok QR code, memberCustomer:', memberCustomer);
+        }
+        
         text += `Terima kasih telah berkunjung!`;
         return encodeURIComponent(text);
     }
     
-    const handleSend = () => {
+    const handleSend = async () => {
         if (!transaction) return;
         if (!phone || phone.length < 8) {
           setError("Nomor WhatsApp wajib diisi dan minimal 8 digit.");
@@ -205,13 +293,20 @@ function WhatsAppDialog({
         setLoading(true);
         setError("");
         onConfirm(name, phone);
-        const receiptText = generateReceiptText(name);
-        const whatsappUrl = `https://wa.me/${phone.startsWith('0') ? '62' + phone.substring(1) : phone}?text=${receiptText}`;
-        window.open(whatsappUrl, '_blank');
-        setTimeout(() => {
-          setLoading(false);
-          onClose();
-        }, 800); // beri jeda agar UX smooth
+        
+        try {
+            const receiptText = await generateReceiptText(name);
+            const whatsappUrl = `https://wa.me/${phone.startsWith('0') ? '62' + phone.substring(1) : phone}?text=${receiptText}`;
+            window.open(whatsappUrl, '_blank');
+        } catch (error) {
+            console.error('Error generating receipt:', error);
+            setError("Gagal generate struk. Silakan coba lagi.");
+        } finally {
+            setTimeout(() => {
+              setLoading(false);
+              onClose();
+            }, 800); // beri jeda agar UX smooth
+        }
     }
 
     return (
@@ -270,13 +365,17 @@ function PaymentSuccessDialog({
     onOpenChange, 
     lastTransaction, 
     onPrint,
-    onSendWhatsApp
+    onSendWhatsApp,
+    currentMember, // Tambahkan prop ini
+    customers // Tambahkan prop ini
 } : {
     isOpen: boolean,
     onOpenChange: (open: boolean) => void,
     lastTransaction: Transaction | null,
     onPrint: () => void,
     onSendWhatsApp: () => void,
+    currentMember?: Customer | null,
+    customers: Customer[]
 }) {
     if (!lastTransaction) return null;
 
@@ -693,6 +792,15 @@ export default function POSPage() {
       const updatedProducts = await getProducts();
       setProducts(updatedProducts);
 
+      // Update member discount usage jika ada diskon member yang digunakan
+      if (currentMember && appliedDiscount) {
+        try {
+          await updateMemberDiscountUsage(currentMember.memberId);
+        } catch (error) {
+          console.error('Error updating member discount usage:', error);
+        }
+      }
+
       // Add transaction
       const newTransaction = await addTransaction(newTransactionData, user);
       setLastTransaction(newTransaction);
@@ -734,7 +842,9 @@ export default function POSPage() {
     if (!lastTransaction || !user) return;
 
     let customerId;
-    let existingCustomer = customers.find(c => c.phoneNumber === phone);
+    let existingCustomer: Customer | undefined = undefined;
+    const phoneStr = phone || "";
+    existingCustomer = customers.find(c => c.phoneNumber === phoneStr);
     
     try {
       if (existingCustomer) {
@@ -781,6 +891,9 @@ export default function POSPage() {
       // Update local state for receipt
       const updatedTransaction = { ...lastTransaction, customerId: customerId, customerName: name || undefined };
       setLastTransaction(updatedTransaction);
+      
+      // Reset currentMember setelah transaksi selesai
+      setCurrentMember(null);
     } catch (error) {
       console.error('Error saving customer data:', error);
       toast({
@@ -793,30 +906,49 @@ export default function POSPage() {
 
   const handleCloseWhatsAppDialog = () => {
     setWhatsAppDialogOpen(false);
+    // Jangan reset currentMember di sini, biarkan generateReceiptText selesai dulu
   }
 
   // Fungsi untuk handle QR scan
-  const handleQrScan = (decodedText: string) => {
+  const handleQrScan = async (decodedText: string) => {
     try {
-      const memberData = JSON.parse(decodedText);
-      if (memberData.memberId && memberData.name) {
-        // Cari member berdasarkan memberId
-        const member = customers.find(c => c.memberId === memberData.memberId);
-        if (member) {
-          setCurrentMember(member);
-          setQrScannerOpen(false);
-          setMemberValidationError('');
-          toast({
-            title: "Member Divalidasi",
-            description: `Selamat datang, ${member.name}!`,
-          });
-        } else {
-          setMemberValidationError('Member tidak ditemukan dalam database.');
-        }
-      } else {
-        setMemberValidationError('QR code tidak valid.');
+      // Parse QR data menggunakan QR service
+      let memberData = null;
+      try {
+        memberData = JSON.parse(decodedText);
+      } catch (e) {
+        setMemberValidationError('QR code tidak valid atau rusak.');
+        return;
       }
+      
+      if (!memberData || !memberData.memberId || !memberData.name) {
+        setMemberValidationError('QR code tidak valid.');
+        return;
+      }
+
+      // Cari member berdasarkan memberId
+      const member = customers.find(c => c.memberId === memberData.memberId);
+      if (!member) {
+        setMemberValidationError('Member tidak ditemukan dalam database.');
+        return;
+      }
+
+      // Validasi apakah member bisa menggunakan diskon hari ini
+      const canUseDiscount = await canMemberUseDiscount(memberData.memberId);
+      if (!canUseDiscount) {
+        setMemberValidationError('Member sudah menggunakan diskon hari ini. Silakan coba lagi besok.');
+        return;
+      }
+
+      setCurrentMember(member);
+      setQrScannerOpen(false);
+      setMemberValidationError('');
+      toast({
+        title: "Member Divalidasi",
+        description: `Selamat datang, ${member.name}! Diskon member tersedia.`,
+      });
     } catch (error) {
+      console.error('Error handling QR scan:', error);
       setMemberValidationError('QR code tidak valid atau rusak.');
     }
   };
@@ -1430,6 +1562,8 @@ export default function POSPage() {
           lastTransaction={lastTransaction}
           onPrint={handlePrintReceipt}
           onSendWhatsApp={handleOpenWhatsAppDialog}
+          currentMember={currentMember}
+          customers={customers}
       />
       
       <WhatsAppDialog
@@ -1437,6 +1571,8 @@ export default function POSPage() {
         transaction={lastTransaction}
         onClose={handleCloseWhatsAppDialog}
         onConfirm={handleWhatsAppConfirm}
+        currentMember={currentMember}
+        customers={customers}
       />
 
       {/* Dialog QR Scanner untuk Member */}
