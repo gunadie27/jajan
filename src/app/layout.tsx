@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Toaster } from "@/components/ui/toaster";
 import { Analytics } from "@vercel/analytics/next";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import "./globals.css";
 import { ThemeProvider } from "next-themes";
 // Trigger Vercel redeploy
@@ -37,6 +38,7 @@ export default function RootLayout({
         {children}
         <Toaster />
         <Analytics />
+        <SpeedInsights />
         </ThemeProvider>
       </body>
     </html>
