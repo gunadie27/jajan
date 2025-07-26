@@ -822,8 +822,11 @@ export default function POSPage() {
   };
 
   const handleQrScanError = (error: any) => {
-    console.error('QR Scanner error:', error);
-    setMemberValidationError('Gagal memulai kamera. Pastikan izin kamera diberikan.');
+    // Hanya log error yang serius, bukan warning biasa
+    if (error && typeof error === 'object' && error.name !== 'IndexSizeError') {
+      console.error('QR Scanner error:', error);
+      setMemberValidationError('Gagal memulai kamera. Pastikan izin kamera diberikan.');
+    }
   };
 
   const handleRemoveMember = () => {
@@ -1461,6 +1464,7 @@ export default function POSPage() {
                 <div className="w-64 h-64 border-2 border-blue-400 border-dashed rounded-lg"></div>
               </div>
               <QrScanner
+                key={qrScannerOpen ? 'qr-scanner-open' : 'qr-scanner-closed'}
                 onScan={handleQrScan}
                 onError={handleQrScanError}
                 width={250}
