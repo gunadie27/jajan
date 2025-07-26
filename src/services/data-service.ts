@@ -54,6 +54,7 @@ const productSchema = z.object({
   imageUrl: z.string().url().optional(),
   outletId: z.string().optional(), // Optional untuk produk global
   variants: z.array(z.object({
+    id: z.string().optional(), // Optional untuk update
     name: z.string().min(1).max(50),
     price: z.number().min(0),
     cogs: z.number().min(0),
@@ -190,10 +191,36 @@ export async function updateProduct(productId: string, productData: Omit<Product
         }
     }
     
-    // Prisma doesn't support direct upsert on nested relations with a custom ID.
-    // So we manage variants manually: delete old ones, create new ones.
     const updatedProduct = await prisma.$transaction(async (tx) => {
-        await tx.productVariant.deleteMany({ where: { productId }});
+        // Ambil semua variant lama
+        const oldVariants = await tx.productVariant.findMany({ where: { productId } });
+        const oldVariantIds = oldVariants.map(v => v.id);
+
+        // Ambil semua variantId dari data baru (frontend)
+        const newVariantIds = variants.filter(v => v.id).map(v => v.id);
+
+        // Variant yang akan dihapus = variant lama yang tidak ada di data baru
+        const toDelete = oldVariantIds.filter(id => !newVariantIds.includes(id));
+
+        // Cari variant yang masih dipakai di OrderItem
+        let usedVariantIds: string[] = [];
+        if (toDelete.length > 0) {
+          const usedVariants = await tx.orderItem.findMany({
+            where: { variantId: { in: toDelete } },
+            select: { variantId: true }
+          });
+          usedVariantIds = usedVariants.map(v => v.variantId);
+        }
+
+        // Hanya hapus variant yang tidak dipakai
+        const safeToDelete = toDelete.filter(id => !usedVariantIds.includes(id));
+        if (safeToDelete.length > 0) {
+          await tx.productVariant.deleteMany({ where: { id: { in: safeToDelete } } });
+        }
+        // Jika ada variant yang tidak bisa dihapus, beri warning ke user
+        if (usedVariantIds.length > 0) {
+          throw new Error('Tidak bisa menghapus variant yang sudah pernah dipakai di transaksi. Silakan nonaktifkan atau ubah nama saja.');
+        }
         return tx.product.update({
             where: { id: productId },
             data: {
@@ -202,13 +229,32 @@ export async function updateProduct(productId: string, productData: Omit<Product
                 imageUrl,
                 outletId: outletId || null, // Bisa null untuk produk global
                 variants: {
-                    create: variants.map(v => ({
-                        name: v.name,
-                        price: v.price,
-                        cogs: v.cogs,
-                        stock: v.stock,
-                        trackStock: v.trackStock
-                    }))
+                    // Update existing variants dan create baru
+                    upsert: variants.map(v => v.id ? {
+                        where: { id: v.id },
+                        update: {
+                          name: v.name,
+                          price: v.price,
+                          cogs: v.cogs,
+                          stock: v.stock,
+                          trackStock: v.trackStock
+                        },
+                        create: {
+                          name: v.name,
+                          price: v.price,
+                          cogs: v.cogs,
+                          stock: v.stock,
+                          trackStock: v.trackStock
+                        }
+                    } : {
+                        create: {
+                          name: v.name,
+                          price: v.price,
+                          cogs: v.cogs,
+                          stock: v.stock,
+                          trackStock: v.trackStock
+                        }
+                    })
                 }
             },
             include: { variants: true, category: true, outlet: true }

@@ -36,7 +36,6 @@ export class QRService {
 
       // Generate QR code image
       const qrCodeBuffer = await QRCode.toBuffer(qrData, {
-        type: 'image/png',
         width: 300,
         margin: 2,
         color: {

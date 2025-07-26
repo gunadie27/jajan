@@ -72,11 +72,13 @@ export async function POST(request: NextRequest) {
   // Rename file ke nama acak
   const ext = file.name.split('.').pop() || 'jpg';
   const filename = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}.${ext}`;
+  const filePath = `produk/${filename}`; // Tambahkan folder produk
+  
   // Upload ke Supabase Storage
   try {
     const { data, error } = await supabase.storage
       .from('produkimg')
-      .upload(filename, compressedBuffer, {
+      .upload(filePath, compressedBuffer, {
         contentType: file.type,
         upsert: false,
       });
@@ -85,7 +87,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Supabase upload failed: ' + error.message }, { status: 500 });
     }
     // Ambil public URL
-    const { data: publicUrlData } = supabase.storage.from('produkimg').getPublicUrl(filename);
+    const { data: publicUrlData } = supabase.storage.from('produkimg').getPublicUrl(filePath);
     return new NextResponse(JSON.stringify({ success: true, path: publicUrlData.publicUrl }), {
       status: 200,
       headers: {
