@@ -1,5 +1,9 @@
 import type {NextConfig} from 'next';
 
+const withBundleAnalyzer = require('@next/bundle-analyzer')({
+  enabled: process.env.ANALYZE === 'true',
+});
+
 const nextConfig: NextConfig = {
   /* config options here */
   typescript: {
@@ -25,6 +29,30 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+  // Optimasi browser target untuk menghilangkan polyfills yang tidak perlu
+  compiler: {
+    // Hapus console.log di production
+    removeConsole: process.env.NODE_ENV === 'production',
+  },
+  // Target browser modern (2019+) untuk menghilangkan polyfills
+  webpack: (config, { dev, isServer }) => {
+    if (!dev && !isServer) {
+      // Target browser modern untuk menghilangkan polyfills
+      config.target = ['web', 'es2019'];
+      
+      // Optimasi tersier untuk menghilangkan polyfills
+      config.resolve.fallback = {
+        ...config.resolve.fallback,
+        // Hapus polyfills yang tidak diperlukan untuk browser modern
+        crypto: false,
+        stream: false,
+        util: false,
+        buffer: false,
+        process: false,
+      };
+    }
+    return config;
+  },
 };
 
-export default nextConfig;
+export default withBundleAnalyzer(nextConfig);

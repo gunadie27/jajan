@@ -7,6 +7,7 @@
     "genkit:dev": "genkit start -- tsx src/ai/dev.ts",
     "genkit:watch": "genkit start -- tsx --watch src/ai/dev.ts",
     "build": "next build",
+    "build:analyze": "ANALYZE=true next build",
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
@@ -16,6 +17,12 @@
   "prisma": {
     "seed": "tsx prisma/seed.ts"
   },
+  "browserslist": [
+    "last 2 versions",
+    "not dead",
+    "not ie 11",
+    "not ie_mob 11"
+  ],
   "dependencies": {
     "@genkit-ai/googleai": "^1.13.0",
     "@genkit-ai/next": "^1.13.0",
@@ -73,6 +80,7 @@
     "zustand": "^5.0.6"
   },
   "devDependencies": {
+    "@next/bundle-analyzer": "^15.4.4",
     "@types/bcrypt": "^5.0.2",
     "@types/node": "^20",
     "@types/qrcode": "^1.5.5",
