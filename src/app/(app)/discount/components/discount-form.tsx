@@ -39,6 +39,12 @@ type Category = { id: string; name: string };
 const formSchema = z.object({
   name: z.string().min(3, 'Nama promo minimal 3 karakter'),
   isActive: z.boolean().default(true),
+  validFrom: z.date({
+    required_error: "Tanggal mulai harus diisi",
+  }),
+  validUntil: z.date({
+    required_error: "Tanggal berakhir harus diisi",
+  }),
   discountType: z.enum(['PERCENTAGE', 'FIXED_AMOUNT']),
   discountValue: z.coerce.number().positive('Nilai diskon harus lebih dari 0'),
   appliesTo: z.enum(['ALL', 'MEMBER_ONLY', 'NON_MEMBER_ONLY']),
@@ -48,6 +54,9 @@ const formSchema = z.object({
   categoryId: z.string().optional(),
   maxDiscountAmount: z.coerce.number().optional(),
   bundledProductIds: z.array(z.string()).optional(),
+}).refine((data) => data.validUntil > data.validFrom, {
+  message: "Tanggal berakhir harus setelah tanggal mulai",
+  path: ["validUntil"],
 });
 
 type DiscountFormValues = z.infer<typeof formSchema>;
@@ -61,7 +70,6 @@ interface DiscountFormProps {
 export function DiscountForm({ initialData, onSubmit, isLoading }: DiscountFormProps) {
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
-  const [simSubtotal, setSimSubtotal] = useState<number>(100000);
 
   useEffect(() => {
     async function fetchData() {
@@ -78,6 +86,8 @@ export function DiscountForm({ initialData, onSubmit, isLoading }: DiscountFormP
     defaultValues: initialData || {
       name: '',
       isActive: true,
+      validFrom: new Date(),
+      validUntil: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 hari dari sekarang
       discountType: 'PERCENTAGE',
       appliesTo: 'ALL',
       minPurchase: 0,
@@ -90,31 +100,24 @@ export function DiscountForm({ initialData, onSubmit, isLoading }: DiscountFormP
   const maxDiscountAmount = form.watch('maxDiscountAmount');
   const scope = form.watch('scope');
 
-  // Kalkulasi preview diskon
-  let preview = null;
-  if (simSubtotal && discountValue) {
-    let potongan = 0;
-    if (discountType === 'PERCENTAGE') {
-      potongan = simSubtotal * (discountValue / 100);
-      if (maxDiscountAmount && potongan > maxDiscountAmount) {
-        potongan = maxDiscountAmount;
-      }
-    } else {
-      potongan = Math.min(discountValue, simSubtotal);
-    }
-    const after = simSubtotal - potongan;
-    preview = (
-      <div className="mt-2 p-3 rounded-lg bg-primary/10 text-primary text-sm font-medium">
-        <div>Potongan: <span className="font-bold">Rp{potongan.toLocaleString('id-ID')}</span></div>
-        <div>Total setelah diskon: <span className="font-bold">Rp{after.toLocaleString('id-ID')}</span></div>
-      </div>
-    );
-  }
-
   // Reset form jika initialData berubah
   useEffect(() => {
     if (initialData) {
-      form.reset(initialData);
+      console.log('=== FORM RESET DEBUG ===');
+      console.log('Initial data received:', initialData);
+      
+      // Konversi data untuk kompatibilitas form
+      const processedData = {
+        ...initialData,
+        categoryId: initialData.categoryId ? String(initialData.categoryId) : undefined,
+        productId: initialData.productId || undefined,
+        bundledProductIds: initialData.bundledProductIds || [],
+        validFrom: initialData.validFrom ? new Date(initialData.validFrom) : new Date(),
+        validUntil: initialData.validUntil ? new Date(initialData.validUntil) : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      };
+      
+      console.log('Processed data for form:', processedData);
+      form.reset(processedData);
     }
   }, [initialData, form]);
 
@@ -146,6 +149,92 @@ export function DiscountForm({ initialData, onSubmit, isLoading }: DiscountFormP
             </FormItem>
           )}
         />
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <FormField
+            control={form.control}
+            name="validFrom"
+            render={({ field }) => (
+              <FormItem className="flex flex-col">
+                <FormLabel>Tanggal Mulai</FormLabel>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <FormControl>
+                      <Button
+                        variant={"outline"}
+                        className={cn(
+                          "w-full pl-3 text-left font-normal",
+                          !field.value && "text-muted-foreground"
+                        )}
+                      >
+                        {field.value ? (
+                          format(field.value, "PPP")
+                        ) : (
+                          <span>Pilih tanggal mulai</span>
+                        )}
+                        <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                      </Button>
+                    </FormControl>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={field.value}
+                      onSelect={field.onChange}
+                      disabled={(date) =>
+                        date < new Date(new Date().setHours(0, 0, 0, 0))
+                      }
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name="validUntil"
+            render={({ field }) => (
+              <FormItem className="flex flex-col">
+                <FormLabel>Tanggal Berakhir</FormLabel>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <FormControl>
+                      <Button
+                        variant={"outline"}
+                        className={cn(
+                          "w-full pl-3 text-left font-normal",
+                          !field.value && "text-muted-foreground"
+                        )}
+                      >
+                        {field.value ? (
+                          format(field.value, "PPP")
+                        ) : (
+                          <span>Pilih tanggal berakhir</span>
+                        )}
+                        <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                      </Button>
+                    </FormControl>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={field.value}
+                      onSelect={field.onChange}
+                      disabled={(date) =>
+                        date < new Date(new Date().setHours(0, 0, 0, 0))
+                      }
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        </div>
 
         <FormField
           control={form.control}
@@ -261,19 +350,7 @@ export function DiscountForm({ initialData, onSubmit, isLoading }: DiscountFormP
           />
         )}
 
-        {/* Preview hasil diskon */}
-        <div className="mb-4">
-          <label className="block text-sm font-medium text-primary mb-1">Subtotal Simulasi</label>
-          <input
-            type="number"
-            min={0}
-            value={simSubtotal}
-            onChange={e => setSimSubtotal(Number(e.target.value))}
-            className="w-full rounded-lg border px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-primary/30"
-            placeholder="cth: 100000"
-          />
-          {preview}
-        </div>
+
 
         <FormField
             control={form.control}
@@ -399,7 +476,10 @@ export function DiscountForm({ initialData, onSubmit, isLoading }: DiscountFormP
 
 
         <Button type="submit" disabled={isLoading} className="w-full">
-          {isLoading ? 'Menyimpan...' : 'Simpan'}
+          {isLoading 
+            ? (initialData ? 'Memperbarui...' : 'Menyimpan...') 
+            : (initialData ? 'Update' : 'Simpan')
+          }
         </Button>
       </form>
     </Form>

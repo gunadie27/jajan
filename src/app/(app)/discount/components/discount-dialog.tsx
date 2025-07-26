@@ -36,6 +36,8 @@ export function DiscountDialog({ initialData, onSave, isLoading, isOpen, onOpenC
   const description = initialData
     ? 'Ubah detail aturan diskon di bawah ini.'
     : 'Buat aturan diskon baru untuk toko Anda.';
+  const buttonText = initialData ? 'Update' : 'Simpan';
+  const loadingText = initialData ? 'Memperbarui...' : 'Menyimpan...';
 
   const handleSubmit = (data: any) => {
     onSave(data);
@@ -67,8 +69,13 @@ export function DiscountDialog({ initialData, onSave, isLoading, isOpen, onOpenC
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md w-full p-0 overflow-hidden rounded-2xl shadow-2xl border-0">
-        <DialogTitle className="sr-only">{title}</DialogTitle>
-        {content}
+        <DialogHeader className="px-6 pt-6 pb-0">
+          <DialogTitle className="text-2xl font-bold text-primary font-headline">{title}</DialogTitle>
+          <DialogDescription className="text-base text-muted-foreground font-sans">{description}</DialogDescription>
+        </DialogHeader>
+        <div className="px-6 pb-6">
+          <DiscountForm initialData={initialData} onSubmit={handleSubmit} isLoading={isLoading} />
+        </div>
       </DialogContent>
     </Dialog>
   );

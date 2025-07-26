@@ -61,14 +61,27 @@ export default function ManageDiscountsPage() {
   const handleSave = async (data: any) => {
     setIsSubmitting(true);
     try {
+      console.log('=== DISCOUNT SAVE DEBUG ===');
+      console.log('Data received:', data);
+      console.log('Has ID?', !!data.id);
+      console.log('User:', user);
+      
       if (data.id) {
-        await updateDiscount(data.id, data, user);
+        console.log('Updating discount with ID:', data.id);
+        const result = await updateDiscount(data.id, data, user);
+        console.log('Update result:', result);
         toast({ title: 'Sukses', description: 'Data diskon berhasil diperbarui.' });
       } else {
-        await addDiscount(data, user);
+        console.log('Creating new discount');
+        const result = await addDiscount(data, user);
+        console.log('Create result:', result);
         toast({ title: 'Sukses', description: 'Diskon baru berhasil ditambahkan.' });
       }
+      
+      console.log('Reloading discounts...');
       await loadDiscounts();
+      console.log('Closing dialog...');
+      setIsDialogOpen(false);
     } catch (error) {
       console.error('Failed to save discount:', error);
       toast({ title: 'Error', description: 'Gagal menyimpan data diskon.', variant: 'destructive' });

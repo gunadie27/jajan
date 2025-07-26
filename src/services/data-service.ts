@@ -328,10 +328,9 @@ export async function addTransaction(transactionData: Omit<Transaction, 'id'>, c
                 }
             });
             
-            // Tambahkan timestamp untuk memastikan keunikan
-            const timestamp = Date.now().toString().slice(-6);
-            const urut = String(trxCount + 1).padStart(5, '0');
-            const transactionNumber = `TRX-${dateStr}-${outletCode}-${urut}-${timestamp}`;
+            // Format ID transaksi yang lebih simpel: YYMMDD-OUTLET-URUT
+            const urut = String(trxCount + 1).padStart(3, '0');
+            const transactionNumber = `${dateStr}-${outletCode}-${urut}`;
 
             const newTransaction = await prisma.transaction.create({
                 data: {
@@ -671,6 +670,9 @@ export async function getDiscounts(): Promise<any[]> { // Ganti any dengan tipe 
             category: true,
         }
     });
+    console.log('=== GET DISCOUNTS DEBUG ===');
+    console.log('Found discounts:', discounts.length);
+    console.log('Sample discount:', discounts[0]);
     return discounts;
 }
 
@@ -679,7 +681,7 @@ export async function addDiscount(data: any, currentUser: { role: string }): Pro
         throw new Error('Forbidden: Only owner can add discounts.');
     }
 
-    const { name, isActive, discountType, discountValue, appliesTo, minPurchase, validFrom, validUntil, scope, productId, categoryId } = data;
+    const { name, isActive, discountType, discountValue, appliesTo, minPurchase, validFrom, validUntil, scope, productId, categoryId, maxDiscountAmount, bundledProductIds } = data;
     
     // Konversi categoryId ke integer jika ada
     const categoryIdNum = categoryId ? parseInt(categoryId, 10) : undefined;
@@ -697,6 +699,8 @@ export async function addDiscount(data: any, currentUser: { role: string }): Pro
             scope,
             productId,
             categoryId: categoryIdNum,
+            maxDiscountAmount,
+            bundledProductIds: bundledProductIds || [],
         }
     });
 
@@ -708,10 +712,34 @@ export async function updateDiscount(id: string, data: any, currentUser: { role:
         throw new Error('Forbidden: Only owner can update discounts.');
     }
 
-    const { name, isActive, discountType, discountValue, appliesTo, minPurchase, validFrom, validUntil, scope, productId, categoryId } = data;
+    console.log('=== UPDATE DISCOUNT DEBUG ===');
+    console.log('ID:', id);
+    console.log('Raw data:', data);
+
+    const { name, isActive, discountType, discountValue, appliesTo, minPurchase, validFrom, validUntil, scope, productId, categoryId, maxDiscountAmount, bundledProductIds } = data;
     
     // Konversi categoryId ke integer jika ada
     const categoryIdNum = categoryId ? parseInt(categoryId, 10) : undefined;
+
+    // Pastikan tanggal dalam format yang benar
+    const processedValidFrom = validFrom ? new Date(validFrom) : null;
+    const processedValidUntil = validUntil ? new Date(validUntil) : null;
+
+    console.log('Processed data:', {
+        name,
+        isActive,
+        discountType,
+        discountValue,
+        appliesTo,
+        minPurchase,
+        validFrom: processedValidFrom,
+        validUntil: processedValidUntil,
+        scope,
+        productId,
+        categoryId: categoryIdNum,
+        maxDiscountAmount,
+        bundledProductIds: bundledProductIds || [],
+    });
 
     const updatedDiscount = await prisma.discountRule.update({
         where: { id },
@@ -722,14 +750,17 @@ export async function updateDiscount(id: string, data: any, currentUser: { role:
             discountValue,
             appliesTo,
             minPurchase,
-            validFrom,
-            validUntil,
+            validFrom: processedValidFrom,
+            validUntil: processedValidUntil,
             scope,
             productId,
             categoryId: categoryIdNum,
+            maxDiscountAmount,
+            bundledProductIds: bundledProductIds || [],
         }
     });
 
+    console.log('Update successful:', updatedDiscount);
     return updatedDiscount;
 }
 

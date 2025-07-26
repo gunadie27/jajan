@@ -11,12 +11,14 @@ function formatCurrency(value: number | undefined | null) {
 export function Receipt({ transaction }: { transaction: Transaction }) {
   const { id, transactionNumber, date, items, total, outlet, paymentMethod, orderChannel, cashReceived, change, customerName, customer } = transaction;
 
-  // QR code logic: tampilkan jika ada customer dengan memberId dan name
+  // QR code logic: tampilkan jika ada diskon (member) dan customerName
   let qrValue = '';
   let memberName = '';
-  if (customer && customer.memberId && customer.name) {
-    qrValue = JSON.stringify({ memberId: customer.memberId, name: customer.name });
-    memberName = customer.name;
+  if (transaction.discountName && customerName) {
+    // Generate memberId dari customerId jika tidak ada memberId
+    const memberId = customer?.memberId || `member_${transaction.customerId?.replace(/-/g, '')}`;
+    qrValue = JSON.stringify({ memberId, name: customerName });
+    memberName = customerName;
   }
 
   return (
@@ -27,6 +29,7 @@ export function Receipt({ transaction }: { transaction: Transaction }) {
             <p className="text-xs">{new Intl.DateTimeFormat('id-ID', { dateStyle: 'long', timeStyle: 'short' }).format(date)}</p>
             <p className="text-xs">ID: {transactionNumber || id}</p>
             {customerName && <p className="text-xs font-semibold">Pelanggan: {customerName}</p>}
+            {transaction.discountName && <p className="text-xs text-green-600 font-semibold">Member: {customerName}</p>}
         </div>
 
         <div className="border-t border-b border-dashed border-black py-2 my-2">
@@ -47,8 +50,14 @@ export function Receipt({ transaction }: { transaction: Transaction }) {
         <div className="space-y-1 text-xs">
              <div className="flex justify-between font-bold">
                 <span>Subtotal</span>
-                <span>{formatCurrency(total)}</span>
+                <span>{formatCurrency(total + (transaction.discountAmount || 0))}</span>
             </div>
+            {transaction.discountName && transaction.discountAmount && (
+                <div className="flex justify-between text-green-600">
+                    <span>Diskon: {transaction.discountName}</span>
+                    <span>-{formatCurrency(transaction.discountAmount)}</span>
+                </div>
+            )}
             <div className="flex justify-between font-bold">
                 <span>Total</span>
                 <span>{formatCurrency(total)}</span>

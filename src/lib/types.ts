@@ -59,6 +59,8 @@ export type Transaction = {
   customerId?: string;
   customerName?: string;
   cashierSessionId?: string; // Link to cashier session
+  discountName?: string; // Nama diskon yang diterapkan
+  discountAmount?: number; // Jumlah diskon yang diterapkan
 };
 
 export type Expense = {

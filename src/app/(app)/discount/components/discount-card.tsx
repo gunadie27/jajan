@@ -97,12 +97,16 @@ export function DiscountCard({ discount, onEdit, onDelete }: DiscountCardProps) 
           <Badge variant={isActive ? 'default' : 'outline'}>
             {isActive ? 'Aktif' : 'Tidak Aktif'}
           </Badge>
-          <div className="flex items-center gap-1 text-xs text-muted-foreground">
-            <Calendar className="w-3 h-3" />
-            {discount.validUntil
-              ? `Berakhir ${format(new Date(discount.validUntil), 'dd MMM yyyy')}`
-              : 'Tanpa Batas Waktu'}
-          </div>
+        </div>
+        <div className="flex items-center gap-1 text-xs text-muted-foreground">
+          <Calendar className="w-3 h-3" />
+          {discount.validFrom && discount.validUntil ? (
+            <span>
+              {format(new Date(discount.validFrom), 'dd MMM yyyy')} - {format(new Date(discount.validUntil), 'dd MMM yyyy')}
+            </span>
+          ) : (
+            <span>Tanpa Batas Waktu</span>
+          )}
         </div>
       </CardContent>
     </Card>

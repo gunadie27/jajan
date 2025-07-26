@@ -19,7 +19,7 @@ import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, Dialog
 import { Label } from "@/components/ui/label";
 import Image from "next/image";
 import type { OrderItem, Product, ProductVariant, Transaction, Customer, OrderChannel, PaymentMethod, PlatformSettings, Outlet, DiscountRule } from "@/lib/types";
-import { X, Plus, Minus, CreditCard, ScanLine, CheckCircle, Printer, ClipboardList, ShoppingBag, Send, Handshake, Store, Utensils, Bike, ShoppingCart } from "lucide-react";
+import { X, Plus, Minus, CreditCard, ScanLine, CheckCircle, Printer, ClipboardList, ShoppingBag, Send, Handshake, Store, Utensils, Bike, ShoppingCart, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { Receipt } from "@/components/receipt";
@@ -42,6 +42,7 @@ import { useCustomerStore } from '@/store/customerStore';
 import { getCustomerByPhone } from '@/services/data-service';
 import { useCashierSession } from "@/hooks/use-cashier-session";
 import { SessionWarning } from "@/components/session-warning";
+import QrScanner from "@/components/qr-scanner";
 
 // Tipe untuk diskon yang diaplikasikan
 type AppliedDiscount = {
@@ -168,16 +169,29 @@ function WhatsAppDialog({
     const generateReceiptText = (customerName: string) => {
         let text = `*Struk Digital - Maujajan POS*\n\n`;
         text += `Yth. ${customerName || 'Pelanggan'}\n\n`;
-        text += `ID Transaksi: ${transaction?.id ? String(transaction.id) : '-'}\n`;
+        text += `ID Transaksi: ${transaction?.transactionNumber || transaction?.id || '-'}\n`;
         text += `Tanggal: ${transaction ? new Intl.DateTimeFormat('id-ID', { dateStyle: 'long', timeStyle: 'short' }).format(new Date(transaction.date)) : '-'}\n`;
         text += `Outlet: ${transaction?.outlet || '-'}\n`;
+        if (transaction?.discountName) {
+            text += `Member: ${customerName || 'Pelanggan'}\n`;
+        }
         text += `--------------------------------\n`;
         transaction?.items.forEach(item => {
             text += `${item.product.name} (${item.variant.name})\n`;
             text += `${item.quantity} x Rp${item.price.toLocaleString('id-ID')} = Rp${(Number(item.quantity) * Number(item.price)).toLocaleString('id-ID')}\n`;
         });
         text += `--------------------------------\n`;
+        const subtotal = (transaction?.total ?? 0) + (transaction?.discountAmount ?? 0);
+        text += `Subtotal: Rp${subtotal.toLocaleString('id-ID')}\n`;
+        if (transaction?.discountName && transaction?.discountAmount) {
+            text += `Diskon: ${transaction.discountName} -Rp${transaction.discountAmount.toLocaleString('id-ID')}\n`;
+        }
         text += `*Total: Rp${(transaction?.total ?? 0).toLocaleString('id-ID')}*\n\n`;
+        if (transaction?.discountName) {
+            const memberId = `member_${transaction.customerId?.replace(/-/g, '')}`;
+            const qrData = JSON.stringify({ memberId, name: customerName || 'Pelanggan' });
+            text += `QR Member: ${qrData}\n\n`;
+        }
         text += `Terima kasih telah berkunjung!`;
         return encodeURIComponent(text);
     }
@@ -283,6 +297,16 @@ function PaymentSuccessDialog({
                 </DialogHeader>
                 <div className="flex flex-col items-center text-center gap-2 py-2">
                     <div className="text-2xl sm:text-3xl font-bold text-green-600 mb-1">Rp{(lastTransaction.total ?? 0).toLocaleString('id-ID')}</div>
+                    {lastTransaction.discountName && (
+                        <div className="text-xs text-green-600 mb-1">
+                            Member: {lastTransaction.customerName}
+                        </div>
+                    )}
+                    {lastTransaction.discountName && lastTransaction.discountAmount && (
+                        <div className="text-xs text-green-600 mb-1">
+                            Diskon: {lastTransaction.discountName} -Rp{lastTransaction.discountAmount.toLocaleString('id-ID')}
+                        </div>
+                    )}
                     <div className="text-xs text-muted-foreground mb-2">Terima kasih telah bertransaksi!</div>
                     <div className="w-full space-y-2 mt-2">
                         <Button onClick={onSendWhatsApp} className="w-full bg-green-600 hover:bg-green-700 text-white font-bold rounded-lg text-sm py-3 flex items-center justify-center gap-2">
@@ -317,6 +341,50 @@ const paymentMethodOptions = {
 };
 
 export default function POSPage() {
+  const { toast } = useToast();
+  const { user } = useAuth();
+  const router = useRouter();
+  const { hasActiveSession } = useCashierSession();
+  const customerStore = useCustomerStore();
+  const { fetchCustomers } = customerStore;
+
+  // Fungsi untuk menyimpan cart ke localStorage
+  const saveCartToStorage = useCallback((cart: OrderItem[]) => {
+    try {
+      const cartData = {
+        items: cart,
+        timestamp: Date.now(),
+        userId: user?.id || 'anonymous'
+      };
+      localStorage.setItem('maujajan_cart', JSON.stringify(cartData));
+    } catch (error) {
+      console.error('Error saving cart to localStorage:', error);
+    }
+  }, [user?.id]);
+
+  // Fungsi untuk memuat cart dari localStorage
+  const loadCartFromStorage = useCallback(() => {
+    try {
+      const cartData = localStorage.getItem('maujajan_cart');
+      if (cartData) {
+        const parsed = JSON.parse(cartData);
+        // Cek apakah cart masih valid (dibuat dalam 24 jam terakhir)
+        const isExpired = Date.now() - parsed.timestamp > 24 * 60 * 60 * 1000;
+        if (!isExpired && parsed.userId === (user?.id || 'anonymous')) {
+          return parsed.items;
+        } else {
+          // Hapus cart yang expired atau bukan milik user ini
+          localStorage.removeItem('maujajan_cart');
+        }
+      }
+    } catch (error) {
+      console.error('Error loading cart from localStorage:', error);
+      localStorage.removeItem('maujajan_cart');
+    }
+    return [];
+  }, [user?.id]);
+
+  // State untuk cart dengan localStorage
   const [order, setOrder] = useState<OrderItem[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -334,17 +402,16 @@ export default function POSPage() {
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
   const [isLoading, setIsLoading] = useState(true);
   const [isInitialized, setIsInitialized] = useState(false);
-  const { toast } = useToast();
-  const { user } = useAuth();
-  const router = useRouter();
   // const isMobile = useIsMobile(); // (opsional, jika ingin dipakai untuk deteksi mobile di komponen)
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
-  const { hasActiveSession } = useCashierSession();
-  const customerStore = useCustomerStore();
-  const { fetchCustomers } = customerStore;
   
   // State baru untuk diskon
   const [appliedDiscount, setAppliedDiscount] = useState<AppliedDiscount | null>(null);
+  
+  // State untuk member dan QR scanner
+  const [currentMember, setCurrentMember] = useState<Customer | null>(null);
+  const [qrScannerOpen, setQrScannerOpen] = useState(false);
+  const [memberValidationError, setMemberValidationError] = useState<string>('');
 
   // Fungsi untuk kalkulasi total, dipindahkan ke atas agar bisa dipakai di banyak tempat
   const calculateTotal = useCallback((currentOrder: OrderItem[]) => {
@@ -353,8 +420,28 @@ export default function POSPage() {
 
   const total = calculateTotal(order);
   
+  // Muat cart dari localStorage setelah user tersedia
+  useEffect(() => {
+    if (user && order.length === 0) {
+      const savedCart = loadCartFromStorage();
+      if (savedCart.length > 0) {
+        setOrder(savedCart);
+      }
+    }
+  }, [user, loadCartFromStorage, order.length]);
+  
+  // Simpan cart ke localStorage setiap kali order berubah
+  useEffect(() => {
+    if (order.length > 0) {
+      saveCartToStorage(order);
+    } else {
+      // Hapus cart dari localStorage jika kosong
+      localStorage.removeItem('maujajan_cart');
+    }
+  }, [order, saveCartToStorage]);
+  
   const calculateDiscount = useCallback(() => {
-    const isMember = !!customerStore.customers.length; // Gunakan customers.length sebagai proxy untuk member status
+    const isMember = !!currentMember; // Gunakan currentMember untuk validasi member
     let bestDiscount: AppliedDiscount | null = null;
     let maxDiscountAmount = 0;
 
@@ -433,7 +520,7 @@ export default function POSPage() {
     }
 
     setAppliedDiscount(bestDiscount);
-  }, [order, customerStore.customers.length, activeDiscounts, total]);
+  }, [order, currentMember, activeDiscounts, total]);
 
   // Panggil kalkulasi setiap kali order atau customer berubah
   useEffect(() => {
@@ -542,9 +629,18 @@ export default function POSPage() {
       });
       return;
     }
-    setIsProcessingPayment(true);
 
-    const finalTotal = total;
+    // Validasi member untuk diskon member-only
+    if (appliedDiscount && appliedDiscount.name.includes('Member') && !currentMember) {
+      toast({
+        variant: "destructive",
+        title: "Validasi Member Diperlukan",
+        description: "Silakan scan QR member terlebih dahulu untuk menggunakan diskon member."
+      });
+      return;
+    }
+
+    setIsProcessingPayment(true);
 
     const newTransactionData: Omit<Transaction, 'id'> = {
         items: order,
@@ -557,8 +653,10 @@ export default function POSPage() {
         paymentMethod: paymentMethod,
         cashReceived: paymentMethod === 'cash' ? cashReceived : undefined,
         change: paymentMethod === 'cash' && cashReceived > finalTotal ? cashReceived - finalTotal : undefined,
-        customerId: customerId,
-        customerName: customerName,
+        customerId: currentMember?.id || customerId,
+        customerName: currentMember?.name || customerName,
+        discountName: appliedDiscount?.name,
+        discountAmount: appliedDiscount?.amount,
     }
 
     let isStockAvailable = true;
@@ -602,11 +700,16 @@ export default function POSPage() {
       setOrder([]);
       setCashReceived(0);
       setFormattedCashReceived('');
+      setAppliedDiscount(null); // Reset diskon
+      setCurrentMember(null); // Reset member
       setPaymentDialogOpen(false);
       setPaymentSuccessDialogOpen(true);
       setOrderChannel('store');
       setPaymentMethod('cash');
       setIsProcessingPayment(false);
+      
+      // Bersihkan cart dari localStorage setelah transaksi berhasil
+      localStorage.removeItem('maujajan_cart');
     } catch (error) {
       console.error('Error processing payment:', error);
       toast({
@@ -692,6 +795,42 @@ export default function POSPage() {
     setWhatsAppDialogOpen(false);
   }
 
+  // Fungsi untuk handle QR scan
+  const handleQrScan = (decodedText: string) => {
+    try {
+      const memberData = JSON.parse(decodedText);
+      if (memberData.memberId && memberData.name) {
+        // Cari member berdasarkan memberId
+        const member = customers.find(c => c.memberId === memberData.memberId);
+        if (member) {
+          setCurrentMember(member);
+          setQrScannerOpen(false);
+          setMemberValidationError('');
+          toast({
+            title: "Member Divalidasi",
+            description: `Selamat datang, ${member.name}!`,
+          });
+        } else {
+          setMemberValidationError('Member tidak ditemukan dalam database.');
+        }
+      } else {
+        setMemberValidationError('QR code tidak valid.');
+      }
+    } catch (error) {
+      setMemberValidationError('QR code tidak valid atau rusak.');
+    }
+  };
+
+  const handleQrScanError = (error: any) => {
+    console.error('QR Scanner error:', error);
+    setMemberValidationError('Gagal memulai kamera. Pastikan izin kamera diberikan.');
+  };
+
+  const handleRemoveMember = () => {
+    setCurrentMember(null);
+    setAppliedDiscount(null); // Reset diskon karena member dihapus
+  };
+
   const filteredProducts = products.filter(product =>
     product.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
@@ -725,7 +864,7 @@ export default function POSPage() {
   }, [orderChannel, platformSettings, order.length]);
   
   const totalForDialog = calculateTotal(order);
-  const changeForDialog = cashReceived > totalForDialog ? cashReceived - totalForDialog : 0;
+  const changeForDialog = cashReceived > finalTotal ? cashReceived - finalTotal : 0;
 
   // Tambahkan state untuk modal pesanan mobile
   const [mobileOrderOpen, setMobileOrderOpen] = useState(false);
@@ -742,12 +881,37 @@ export default function POSPage() {
   // Helper: check if product is in cart
   const isProductInCart = (product: Product) => order.some(item => item.product.id === product.id);
 
+  // Fungsi untuk membersihkan cart
+  const clearCart = () => {
+    setOrder([]);
+    setAppliedDiscount(null);
+    setCurrentMember(null);
+    localStorage.removeItem('maujajan_cart');
+    toast({
+      title: "Cart Dikosongkan",
+      description: "Semua item telah dihapus dari keranjang",
+    });
+  };
+
   return (
     <div className="flex flex-col min-h-screen bg-background pb-28">
       {/* Header & Search */}
       <div className="sticky top-0 z-20 bg-background/95 px-2 pt-2 pb-1 flex flex-col gap-1 shadow-sm">
         <div className="flex items-center justify-between">
-          <h1 className="text-xl font-bold tracking-tight">Transaksi Baru</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-xl font-bold tracking-tight">Transaksi Baru</h1>
+            {order.length > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={clearCart}
+                className="text-xs text-red-600 hover:text-red-700 hover:bg-red-50"
+              >
+                <Trash2 className="h-3 w-3 mr-1" />
+                Kosongkan
+              </Button>
+            )}
+          </div>
           {/* Floating cart button for mobile */}
           <div className="md:hidden">
             <Sheet open={cartOpen} onOpenChange={setCartOpen}>
@@ -763,10 +927,23 @@ export default function POSPage() {
                 {/* Keranjang di mobile */}
           <div className="px-4 pt-4 pb-2">
             <DialogHeader className="border-b pb-2">
-              <DialogTitle className="font-headline flex items-center gap-2 text-lg text-primary drop-shadow-sm">
-                <ClipboardList className="h-6 w-6" />
-                Pesanan
-              </DialogTitle>
+              <div className="flex items-center justify-between">
+                <DialogTitle className="font-headline flex items-center gap-2 text-lg text-primary drop-shadow-sm">
+                  <ClipboardList className="h-6 w-6" />
+                  Pesanan
+                </DialogTitle>
+                {order.length > 0 && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={clearCart}
+                    className="text-xs text-red-600 hover:text-red-700 hover:bg-red-50 h-6 px-2"
+                  >
+                    <Trash2 className="h-3 w-3 mr-1" />
+                    Kosongkan
+                  </Button>
+                )}
+              </div>
             </DialogHeader>
             <div className="flex-1 overflow-y-auto pt-2 pb-4 max-h-[50vh]">
               {order.length === 0 ? (
@@ -797,9 +974,57 @@ export default function POSPage() {
               )}
           </div>
           <div className="px-4 pb-4 pt-2 border-t bg-transparent sticky bottom-0">
+            {/* Member Status */}
+            {currentMember ? (
+              <div className="w-full flex justify-between items-center text-sm mb-2 p-2 bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg border border-green-200">
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                    <span className="text-green-700 font-medium">Member: {currentMember.name}</span>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-4 w-4 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
+                    onClick={handleRemoveMember}
+                  >
+                    <X className="h-3 w-3" />
+                  </Button>
+                </div>
+                <div className="flex items-center gap-1 text-green-600 text-xs">
+                  <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                  Tervalidasi
+                </div>
+              </div>
+            ) : (
+              <div className="w-full flex items-center text-sm mb-2 p-2 bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg border border-blue-200">
+                <div className="flex items-center gap-2">
+                  <span className="text-blue-600 font-medium">Member</span>
+                  <span className="text-xs text-blue-500">Scan QR di pembayaran untuk diskon</span>
+                </div>
+              </div>
+            )}
+            {appliedDiscount && (
+              <div className="w-full flex justify-between text-sm mb-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-green-600 font-medium">Diskon: {appliedDiscount.name}</span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-4 w-4 p-0 text-red-500 hover:text-red-700"
+                    onClick={() => setAppliedDiscount(null)}
+                  >
+                    <X className="h-3 w-3" />
+                  </Button>
+                </div>
+                <span className="text-green-600 font-medium">-Rp{appliedDiscount.amount.toLocaleString("id-ID")}</span>
+              </div>
+            )}
             <div className="w-full flex justify-between text-base font-bold mb-4">
               <span>Total</span>
-              <span>Rp{total.toLocaleString("id-ID")}</span>
+              <span>Rp{finalTotal.toLocaleString("id-ID")}</span>
             </div>
             <Button
               className="w-full bg-gradient-to-r from-primary to-purple-500 text-white hover:bg-primary/90 rounded-lg py-3 text-base font-bold shadow-md"
@@ -894,7 +1119,20 @@ export default function POSPage() {
           <div className="p-4">
             <div className="flex items-center justify-between mb-2">
               <span className="font-semibold text-primary text-base">Keranjang</span>
-              <span className="text-xs text-muted-foreground">Total: {order.length} item</span>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground">Total: {order.length} item</span>
+                {order.length > 0 && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={clearCart}
+                    className="text-xs text-red-600 hover:text-red-700 hover:bg-red-50 h-6 px-2"
+                  >
+                    <Trash2 className="h-3 w-3 mr-1" />
+                    Kosongkan
+                  </Button>
+                )}
+              </div>
             </div>
             <div className="pt-4 pb-2 flex-1 overflow-y-auto max-h-[calc(100vh-200px)]">
               {order.length === 0 ? (
@@ -925,9 +1163,57 @@ export default function POSPage() {
               )}
             </div>
             <div className="pb-4 pt-2 border-t bg-transparent">
+              {/* Member Status */}
+              {currentMember ? (
+                <div className="w-full flex justify-between items-center text-sm mb-2 p-2 bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg border border-green-200">
+                  <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                      <span className="text-green-700 font-medium">Member: {currentMember.name}</span>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-4 w-4 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
+                      onClick={handleRemoveMember}
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </div>
+                  <div className="flex items-center gap-1 text-green-600 text-xs">
+                    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                    </svg>
+                    Tervalidasi
+                  </div>
+                </div>
+              ) : (
+                <div className="w-full flex items-center text-sm mb-2 p-2 bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg border border-blue-200">
+                  <div className="flex items-center gap-2">
+                    <span className="text-blue-600 font-medium">Member</span>
+                    <span className="text-xs text-blue-500">Scan QR di pembayaran untuk diskon</span>
+                  </div>
+                </div>
+              )}
+              {appliedDiscount && (
+                <div className="w-full flex justify-between text-sm mb-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-green-600 font-medium">Diskon: {appliedDiscount.name}</span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-4 w-4 p-0 text-red-500 hover:text-red-700"
+                      onClick={() => setAppliedDiscount(null)}
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </div>
+                  <span className="text-green-600 font-medium">-Rp{appliedDiscount.amount.toLocaleString("id-ID")}</span>
+                </div>
+              )}
               <div className="w-full flex justify-between text-base font-bold mb-4">
                 <span>Total</span>
-                <span>Rp{total.toLocaleString('id-ID')}</span>
+                <span>Rp{finalTotal.toLocaleString('id-ID')}</span>
               </div>
               <Button
                 className="w-full bg-gradient-to-r from-primary to-purple-500 text-white hover:bg-primary/90 rounded-lg py-3 text-base font-bold shadow-md"
@@ -947,16 +1233,22 @@ export default function POSPage() {
       {/* Sticky bottom bar for total & bayar */}
       <div className="fixed left-0 right-0 bottom-16 z-40 md:hidden px-2 pointer-events-auto">
         <div className="w-full max-w-md mx-auto bg-gradient-to-br from-white via-blue-50 to-purple-50 rounded-2xl shadow-2xl flex items-center justify-between px-2 py-1 gap-1 border-t border-border mb-2 transition-all duration-300" style={{minHeight: 40, boxShadow: '0 8px 32px 0 rgba(31,38,135,0.18)', marginBottom: 8}}>
-          <div className="flex items-center gap-2 flex-1">
-            <span className="bg-primary/10 rounded-full p-2 flex items-center justify-center">
-              <ShoppingCart className="h-6 w-6 text-primary" />
-            </span>
-            <div className="flex flex-col">
-              <span className="text-xs text-muted-foreground font-medium">Total</span>
-              <span className="text-xl font-bold text-primary leading-tight">Rp{total.toLocaleString("id-ID")}</span>
-              <span className="text-xs text-muted-foreground">{order.length} item</span>
+                      <div className="flex items-center gap-2 flex-1">
+              <span className="bg-primary/10 rounded-full p-2 flex items-center justify-center">
+                <ShoppingCart className="h-6 w-6 text-primary" />
+              </span>
+              <div className="flex flex-col">
+                <span className="text-xs text-muted-foreground font-medium">Total</span>
+                <span className="text-xl font-bold text-primary leading-tight">Rp{finalTotal.toLocaleString("id-ID")}</span>
+                {currentMember && (
+                  <span className="text-xs text-green-600 font-medium">Member: {currentMember.name}</span>
+                )}
+                {appliedDiscount && (
+                  <span className="text-xs text-green-600 font-medium">Diskon: {appliedDiscount.name}</span>
+                )}
+                <span className="text-xs text-muted-foreground">{order.length} item</span>
+              </div>
             </div>
-          </div>
           <Button
             variant="popup"
             size="lg"
@@ -1003,6 +1295,43 @@ export default function POSPage() {
                 })}
               </div>
             </div>
+            {/* Member Status */}
+            {currentMember ? (
+              <div className="space-y-2">
+                <Label className="text-xs sm:text-sm">Status Member</Label>
+                <div className="flex items-center justify-between p-3 bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg border border-green-200">
+                  <div className="flex items-center gap-3">
+                    <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                    <div className="flex flex-col">
+                      <span className="text-green-700 font-medium text-xs sm:text-sm">{currentMember.name}</span>
+                      <span className="text-green-600 text-xs">Member Tervalidasi</span>
+                    </div>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 w-6 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
+                    onClick={handleRemoveMember}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <Label className="text-xs sm:text-sm">Member</Label>
+                <Button
+                  variant="outline"
+                  className="w-full text-xs sm:text-sm bg-gradient-to-r from-blue-50 to-purple-50 border-blue-300 text-blue-600 hover:bg-blue-100"
+                  onClick={() => setQrScannerOpen(true)}
+                >
+                  <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V6a1 1 0 00-1-1H5a1 1 0 00-1 1v1a1 1 0 001 1zm12 0h2a1 1 0 001-1V6a1 1 0 00-1-1h-2a1 1 0 00-1 1v1a1 1 0 001 1zM5 20h2a1 1 0 001-1v-1a1 1 0 00-1-1H5a1 1 0 00-1 1v1a1 1 0 001 1z" />
+                  </svg>
+                  Scan QR Member untuk diskon
+                </Button>
+              </div>
+            )}
             <div className="space-y-2">
               <Label className="text-xs sm:text-sm">Metode Pembayaran</Label>
               <div className="flex gap-3 flex-wrap">
@@ -1048,9 +1377,25 @@ export default function POSPage() {
                 </div>
               </div>
             )}
+            {appliedDiscount && (
+              <div className="flex justify-between text-xs sm:text-sm pt-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-green-600 font-medium">Diskon: {appliedDiscount.name}</span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-4 w-4 p-0 text-red-500 hover:text-red-700"
+                    onClick={() => setAppliedDiscount(null)}
+                  >
+                    <X className="h-3 w-3" />
+                  </Button>
+                </div>
+                <span className="text-green-600 font-medium">-Rp{appliedDiscount.amount.toLocaleString('id-ID')}</span>
+              </div>
+            )}
             <div className="flex justify-between text-xs sm:text-sm font-semibold pt-2">
               <span>Total</span>
-              <span>Rp{totalForDialog.toLocaleString('id-ID')}</span>
+              <span>Rp{finalTotal.toLocaleString('id-ID')}</span>
             </div>
           </div>
           <DialogFooter className="gap-2 pt-2">
@@ -1058,7 +1403,7 @@ export default function POSPage() {
             <Button
               onClick={() => handlePayment()}
               className="rounded-lg px-4 text-xs sm:text-sm bg-gradient-to-r from-primary to-purple-500 shadow-md flex items-center justify-center gap-2"
-              disabled={paymentMethod === 'cash' && cashReceived < totalForDialog || isProcessingPayment}
+              disabled={paymentMethod === 'cash' && cashReceived < finalTotal || isProcessingPayment}
             >
               {isProcessingPayment ? (
                 <>
@@ -1090,6 +1435,64 @@ export default function POSPage() {
         onClose={handleCloseWhatsAppDialog}
         onConfirm={handleWhatsAppConfirm}
       />
+
+      {/* Dialog QR Scanner untuk Member */}
+      <Dialog open={qrScannerOpen} onOpenChange={setQrScannerOpen}>
+        <DialogContent
+          className="w-full max-w-sm p-4 sm:p-6 rounded-2xl border-0 shadow-xl bg-gradient-to-br from-blue-50 via-white to-purple-100 max-h-[90vh] overflow-y-auto"
+          style={{ boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.18)' }}
+        >
+          <DialogHeader>
+            <div className="flex flex-col items-center gap-2 mb-4">
+              <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
+                <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V6a1 1 0 00-1-1H5a1 1 0 00-1 1v1a1 1 0 001 1zm12 0h2a1 1 0 001-1V6a1 1 0 00-1-1h-2a1 1 0 00-1 1v1a1 1 0 001 1zM5 20h2a1 1 0 001-1v-1a1 1 0 00-1-1H5a1 1 0 00-1 1v1a1 1 0 001 1z" />
+                </svg>
+              </div>
+              <DialogTitle className="text-center font-headline text-lg sm:text-xl font-bold text-primary drop-shadow-sm">Scan QR Member</DialogTitle>
+              <DialogDescription className="text-center text-xs sm:text-sm text-muted-foreground">
+                Arahkan kamera ke QR code member untuk validasi
+              </DialogDescription>
+            </div>
+          </DialogHeader>
+          <div className="flex flex-col items-center gap-4 py-4">
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                <div className="w-64 h-64 border-2 border-blue-400 border-dashed rounded-lg"></div>
+              </div>
+              <QrScanner
+                onScan={handleQrScan}
+                onError={handleQrScanError}
+                width={250}
+                height={250}
+              />
+            </div>
+            {memberValidationError && (
+              <div className="text-xs text-destructive text-center bg-red-50 p-3 rounded-lg border border-red-200">
+                <div className="flex items-center gap-2">
+                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                  </svg>
+                  {memberValidationError}
+                </div>
+              </div>
+            )}
+            <div className="text-xs text-muted-foreground text-center bg-blue-50 p-3 rounded-lg border border-blue-200">
+              <div className="flex items-center gap-2">
+                <svg className="w-4 h-4 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                </svg>
+                Pastikan QR code member terlihat jelas di dalam kotak
+              </div>
+            </div>
+          </div>
+          <DialogFooter className="pt-2">
+            <Button variant="secondary" onClick={() => setQrScannerOpen(false)} className="w-full rounded-lg text-sm py-2">
+              Batal
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       
       <div className="hidden print:block">
         {lastTransaction && <Receipt transaction={lastTransaction} />}
